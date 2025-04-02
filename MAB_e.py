@@ -1,59 +1,95 @@
-def run_mab_simulation(csv_path):
-    import pandas as pd
-    import numpy as np
-    import random
+import numpy as np
+import pandas as pd
 
-    # Paramètres
-    epsilon = 0.1
-    n_actions = 2  # Direct, Edge Cloud
-
-    # Initialisation des valeurs moyennes pour chaque action
-    action_values = np.zeros(n_actions)
-    action_counts = np.zeros(n_actions)
-
-    def reward_function(row, action):
+class EpsilonGreedyMAB:
+    def __init__(self, n_arms, epsilon):
         """
-        Renvoie une récompense simulée selon le mode de communication.
-        """
-        if action == 0:  # communication directe
-            # Favorable si distance faible et bon signal
-            return row["signal_quality"] * (1 / (1 + row["distance"]))
+        Initialise l'algorithme MAB epsilon-greedy.
 
-        elif action == 1:  # communication via Edge Cloud
-            # Favorable si infrastructure dispo et réseau peu chargé
-            infra_bonus = 0.2 if row["has_infrastructure"] else 0
-            return (1 - row["network_load"]) * 0.7 + row["signal_quality"] * 0.2 + infra_bonus
-
-        return 0
-
-    def select_action():
+        :param n_arms: nombre de bras (actions possibles)
+        :param epsilon: probabilité d'exploration (0 <= epsilon <= 1)
         """
-        Choix epsilon-greedy de l'action à prendre.
+        self.n_arms = n_arms
+        self.epsilon = epsilon
+        self.counts = [0] * n_arms        # nombre de fois que chaque bras a été choisi
+        self.values = [0.0] * n_arms      # valeur estimée de chaque bras
+
+    def select_arm(self):
         """
-        if random.random() < epsilon:
-            return random.randint(0, n_actions - 1)
+        Sélectionne un bras selon la stratégie epsilon-greedy.
+
+        :return: index du bras sélectionné
+        """
+        if np.random() < self.epsilon:
+            # Exploration : choisir un bras au hasard
+            return np.random.randint(self.n_arms)
         else:
-            return np.argmax(action_values)
+            # Exploitation : choisir le bras avec la meilleure valeur estimée
+            return np.argmax(self.values)
 
-    def update(action, reward):
+    def update(self, chosen_arm, reward):
         """
-        Met à jour la valeur estimée pour l'action choisie.
+        Met à jour les statistiques après avoir joué un bras.
+
+        :param chosen_arm: index du bras joué
+        :param reward: récompense obtenue
         """
-        action_counts[action] += 1
-        alpha = 1 / action_counts[action]
-        action_values[action] += alpha * (reward - action_values[action])
+        self.counts[chosen_arm] += 1
+        n = self.counts[chosen_arm]
+        value = self.values[chosen_arm]
+        # Mise à jour incrémentale de la moyenne
+        self.values[chosen_arm] = ((n - 1) / float(n)) * value + (1 / float(n)) * reward
 
-    # Chargement du fichier CSV
-    df = pd.read_csv(csv_path)
-
-    # Boucle MAB
-    for _, row in df.iterrows():
-        action = select_action()
-        reward = reward_function(row, action)
-        update(action, reward)
-
-    # Résultats
-    print("Valeurs estimées pour chaque action :", action_values)
-    print("Nombre de fois où chaque action a été choisie :", action_counts)
+    def __str__(self):
+        return f"Counts: {self.counts}\nValues: {self.values}"
     
-    return action_values, action_counts
+#Chargement des données
+data = pd.read_csv('data.csv',header=None)
+
+# Extraction des données V2V et V2I
+# Extraction des données V2V
+v2v_delay = data.iloc[0, 0]
+v2v_loss_rate = data.iloc[0, 1]
+v2v_load = data.iloc[0, 2]
+
+# Extraction des données V2I
+v2i_delay = data.iloc[1, 0]
+v2i_loss_rate = data.iloc[1, 1]
+v2i_load = data.iloc[1, 2]
+
+
+#Inversion des valeurs pour la simulation et pondération
+delay_weight = 1   
+loss_rate_weight = 1
+load_weight = 0.2
+
+# Initialisation de l'algorithme MAB pour V2V et V2I
+epsilon = 0.1
+eg_mab_v2v = EpsilonGreedyMAB(n_arms=3, epsilon=epsilon)
+eg_mab_v2i = EpsilonGreedyMAB(n_arms=3, epsilon=epsilon)
+
+# Mise à jour des bras avec les données V2V
+eg_mab_v2v.update(0, v2v_delay)
+eg_mab_v2v.update(1, v2v_loss_rate)
+eg_mab_v2v.update(2, v2v_load)
+
+# Mise à jour des bras avec les données V2I
+eg_mab_v2i.update(0, v2i_delay)
+eg_mab_v2i.update(1, v2i_loss_rate)
+eg_mab_v2i.update(2, v2i_load)
+
+# Affichage des résultats
+print("V2V MAB Results:")
+print(eg_mab_v2v)
+print("\nV2I MAB Results:")
+print(eg_mab_v2i)
+# Affichage des bras sélectionnés
+print("\nV2V Selected Arm:", eg_mab_v2v.select_arm())
+print("V2I Selected Arm:", eg_mab_v2i.select_arm())
+# Affichage des valeurs estimées
+print("\nV2V Estimated Values:", eg_mab_v2v.values)
+print("V2I Estimated Values:", eg_mab_v2i.values)
+# Affichage des compteurs
+print("\nV2V Counts:", eg_mab_v2v.counts)
+print("V2I Counts:", eg_mab_v2i.counts)
+
