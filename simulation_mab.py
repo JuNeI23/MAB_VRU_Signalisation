@@ -5,10 +5,9 @@ import csv
 DISTANCE_MAX = 50
 
 class Message:
-    def __init__(self, sender_id, receiver_id, content, taille=1):
+    def __init__(self, sender_id, receiver_id, taille=1):
         self.sender_id = sender_id
         self.receiver_id = receiver_id
-        self.content = content
         self.taille = taille
         self.timestamp = time.time()
 
@@ -16,7 +15,6 @@ class User:
     def __init__(self, user_id, user_type='pieton', position=0):
         self.user_id = user_id
         self.user_type = user_type
-        self.inbox = []
         self.position = position
         priorite_map = {'pieton': 2, 'vehicule': 1, 'infrastructure': 0}
         self.priorite = priorite_map.get(user_type, 0)
@@ -30,10 +28,31 @@ class User:
         return None
 
     def receive_message(self, message):
-        self.inbox.append(message)
+        delay = time.time() - message.timestamp
+        return delay
 
     def move(self, deplacement):
         self.position += deplacement
+    
+    def process_queue(self, users):
+        messages_per_receiver = {}  # Dictionnaire pour stocker les messages par destinataire
+    
+        while not self.queue.empty():
+            _, message = self.queue.get()
+            receiver = users.get(message.receiver_id, None)
+            if receiver and self.within_range(receiver) and not self.protocol.network_load > 0.8:
+                if receiver not in messages_per_receiver:
+                    messages_per_receiver[receiver] = []  # Initialiser une nouvelle file d'attente pour le destinataire
+                messages_per_receiver[receiver].append(message)  # Ajouter le message à la file d'attente du destinataire
+    
+        for receiver, messages in messages_per_receiver.items():
+            messages.sort(key=lambda msg: msg.priority)  # Trier les messages par priorité
+            for message in messages:
+                transmission_delay = self.protocol.transmit_message(self, message, receiver)
+                queue_delay = time.time() - message.timestamp
+                metrics.update_metrics(transmission_delay, queue_delay, message.size, self.protocol.network_load)
+
+
 
 class Infrastructure(User):
     def __init__(self, user_id, position=0):
@@ -120,11 +139,31 @@ def main():
     # Simuler la communication V2V
     metric_v2v = Metric(protocole_v2v)
     metric_v2v = simuler_communication(usagers, protocole_v2v)
+    metric_v2i.update_metrics(protocole_v2v.taux_reussite, protocole_v2v.charge_par_message)
 
     # Simuler la communication V2I
     metric_v2i = Metric(protocole_v2i)
     metric_v2i = simuler_communication(usagers, protocole_v2i)
+    metric_v2i.update_metrics(protocole_v2i.taux_reussite, protocole_v2i.charge_par_message)
 
     # Afficher les résultats
-    print(f"Protocole V2V: {metric_v2v}")
-    print(f"Protocole V2I: {metric_v2i}")
+    print(f"Protocole V2V: {metric_v2v.__dict__}")
+    print(f"Protocole V2I: {metric_v2i.__dict__}")
+
+
+    # Sauvegarder les résultats dans un fichier CSV
+    with open('resultats.csv', 'w', newline='') as csvfile:
+        fieldnames = ['protocole', 'messages_envoyes', 'messages_recus', 'messages_perdus', 'charge_totale', 'delai']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow({'protocole': 'V2V', **metric_v2v.__dict__})
+        writer.writerow({'protocole': 'V2I', **metric_v2i.__dict__})
+    
+    # Utiliser les résultats pour l'algorithme MAB
+    
+if __name__ == "__main__":
+    main()
+# This code simulates a communication system between users (pedestrians, vehicles, and infrastructure) using different protocols (V2V and V2I).
+# It includes classes for messages, users, and protocols, and simulates the sending and receiving of messages while tracking metrics such as success rates and delays.
+# The results are saved in a CSV file for further analysis.
+     
