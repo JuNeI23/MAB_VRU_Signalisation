@@ -1,16 +1,10 @@
 import random
 import time
+import queue
 import csv
 from typing import List
 
 import pandas as pd
-
-# Constantes
-# Distance maximale pour la communication entre utilisateurs
-# Si la distance entre deux utilisateurs est inférieure à cette valeur, 
-# ils peuvent communiquer
-# Sinon, ils ne peuvent pas communiquer
-DISTANCE_MAX = 50
 
 # Classe pour représenter un message
 # entre deux utilisateurs
@@ -18,10 +12,11 @@ DISTANCE_MAX = 50
 # pour simuler le temps d'envoi
 # et de réception du message
 class Message:
-    def __init__(self, sender_id, receiver_id, taille=1):
+    def __init__(self, sender_id, receiver_id, priority, size):
         self.sender_id = sender_id
         self.receiver_id = receiver_id
-        self.taille = taille
+        self.priority = priority
+        self.taille = size
         self.timestamp = time.time()
 
 # Classe pour représenter un utilisateur
@@ -44,13 +39,48 @@ class User:
         self.usager_type = usager_type
         self.time = time
         self.categorie = categorie  # "vru" ou "vehicule"
-
-    def send_message(self, receiver, taille=1):
+        self.queue = queue.PriorityQueue()
+        
+        # Initialiser la priorité et la portée en fonction de la catégorie
+        if self.categorie == "vru":
+            self.priority = 1
+            self.range = 10
+            self.processing_capacity = 1
+            self.queue_size = 10
+        elif self.categorie == "vehicule":
+            self.priority = 2
+            self.range = 20
+            self.processing_capacity = 2
+            self.queue_size = 50
+        else:
+            raise ValueError("Invalid category. Must be 'vru' or 'vehicule'.")
+    
+    def send_message(self, receiver, size=1):
         distance = self.distance_to(receiver)
-        if distance <= DISTANCE_MAX:
-            msg = Message(self.usager_id, receiver.usager_id, taille)
-            return msg
-        return None
+        if distance <= self.range and self.usager_id != receiver.usager_id and size <= self.processing_capacity:
+            message = Message(self.usager_id, receiver.usager_id, size)
+            overall_priority = self.priority + message.priority
+            self.queue.put((overall_priority, message))
+        else:
+            print(f"Message not sent. Distance: {distance}, Range: {self.range}, Size: {size}, Processing Capacity: {self.processing_capacity}")
+
+    def process_queue(self, users):
+        messages_per_receiver = {}  # Dictionnaire pour stocker les messages par destinataire
+    
+        while not self.queue.empty():
+            _, message = self.queue.get()
+            receiver = users.get(message.receiver_id, None)
+            if receiver and self.within_range(receiver) and not self.protocol.network_load > 0.8:
+                if receiver not in messages_per_receiver:
+                    messages_per_receiver[receiver] = []  # Initialiser une nouvelle file d'attente pour le destinataire
+                messages_per_receiver[receiver].append(message)  # Ajouter le message à la file d'attente du destinataire
+    
+        for receiver, messages in messages_per_receiver.items():
+            messages.sort(key=lambda msg: msg.priority)  # Trier les messages par priorité
+            for message in messages:
+                transmission_delay = self.protocol.transmit_message(self, message, receiver)
+                queue_delay = time.time() - message.timestamp
+                metrics.update_metrics(transmission_delay, queue_delay, message.size, self.protocol.network_load)       
 
     def mettre_a_jour_position(self, x: float, y: float, speed: float, angle: float, time: float):
         self.x = x
@@ -79,11 +109,14 @@ class Metric:
         self.charge_totale = 0
         self.delai = 0
 
-    def update_metrics(self, succes, taille=0):
+    def update_metrics(self, succes):
         self.messages_envoyes += 1
         if succes:
             self.messages_recus += 1
-            self.charge_totale += taille
+            self.charge_totale += self.protocole.charge_par_message
+            # Simuler le délai de transmission
+            # En ajoutant le temps de transmission du protocole
+            # au délai total
             self.delai += self.protocole.temps_transmission
         else:
             self.messages_perdus += 1
@@ -96,7 +129,7 @@ class Metric:
         
 # Classe pour représenter un protocole de communication
 # entre les utilisateurs
-# Chaque protocole a un nom, un temps de transmission, un taux de réussite et une charge par message
+# Chaque protocole a un nom, un temps de transmission et un taux de réussite
 # La classe a une méthode pour transmettre un message entre deux utilisateurs
 # selon le protocole
 class Protocole:
@@ -104,7 +137,7 @@ class Protocole:
         self.nom = nom
         self.temps_transmission = temps_transmission  # en secondes
         self.taux_reussite = taux_reussite  # probabilité de succès (entre 0 et 1)
-        self.charge_par_message = charge_par_message  # charge moyenne ajoutée par message
+        self.charge_par_message = charge_par_message  # en Ko
 
     def transmettre(self, message, emetteur, recepteur):
         """
@@ -116,25 +149,6 @@ class Protocole:
             return True
         return False
 
-# Fonction pour simuler la communication entre les utilisateurs
-# selon le protocole donné
-# La fonction prend en entrée une liste d'utilisateurs, un protocole, une métrique et une distance maximale
-def simuler_communication(usagers, protocole, metric, distance_max=DISTANCE_MAX):
-    """
-    Simule la communication entre les utilisateurs selon le protocole donné.
-    """
-    for emetteur in usagers:
-        for recepteur in usagers:
-            if emetteur != recepteur:
-                distance = emetteur.distance_to(recepteur)
-                if distance <= distance_max:
-                    message = emetteur.send_message(recepteur, taille=1)
-                    if message:
-                        protocole.transmettre(message, emetteur, recepteur)
-                        metric.update_metrics(True, taille=1)
-                    else:
-                        metric.update_metrics(False)
-    return metric
 
 # Fonction pour charger les usagers depuis un fichier CSV
 # La fonction prend en entrée le nom du fichier CSV et retourne une liste d'utilisateurs
