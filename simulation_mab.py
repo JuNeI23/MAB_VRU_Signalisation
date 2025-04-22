@@ -1,44 +1,75 @@
 import random
 import time
 import csv
+from typing import List
 
+import pandas as pd
+
+# Constantes
+# Distance maximale pour la communication entre utilisateurs
+# Si la distance entre deux utilisateurs est inférieure à cette valeur, 
+# ils peuvent communiquer
+# Sinon, ils ne peuvent pas communiquer
 DISTANCE_MAX = 50
 
+# Classe pour représenter un message
+# entre deux utilisateurs
+# Chaque message a un identifiant d'émetteur, un identifiant de récepteur, une taille et un timestamp
+# pour simuler le temps d'envoi
+# et de réception du message
 class Message:
-    def __init__(self, sender_id, receiver_id, content, taille=1):
+    def __init__(self, sender_id, receiver_id, taille=1):
         self.sender_id = sender_id
         self.receiver_id = receiver_id
-        self.content = content
         self.taille = taille
         self.timestamp = time.time()
 
+# Classe pour représenter un utilisateur
+# Chaque utilisateur a un identifiant, une position (x, y), un angle, une vitesse, une position sur la route,
+# un bord (edge), un temps, un type d'utilisateur (vru ou véhicule) et une catégorie
+# (vru ou véhicule)
+# La classe a des méthodes pour envoyer et recevoir des messages, mettre à jour la position de l'utilisateur
+# et calculer la distance entre deux utilisateurs
 class User:
-    def __init__(self, user_id, user_type='pieton', position=0):
-        self.user_id = user_id
-        self.user_type = user_type
-        self.inbox = []
-        self.position = position
-        priorite_map = {'pieton': 2, 'vehicule': 1, 'infrastructure': 0}
-        self.priorite = priorite_map.get(user_type, 0)
+    def __init__(self, usager_id: str, x: float, y: float, angle: float, speed: float, position: float,
+                 edge: str, time: float, usager_type: str = "DEFAULT", categorie: str = "vru"):
+        self.usager_id = usager_id
+        self.x = x
+        self.y = y
+        self.angle = angle
+        self.speed = speed
+        self.position = position 
+        self.edge = edge
+        self.slope = 0
+        self.usager_type = usager_type
+        self.time = time
+        self.categorie = categorie  # "vru" ou "vehicule"
 
-    def send_message(self, receiver, content, taille=1):
-        distance = abs(self.position - receiver.position)
+    def send_message(self, receiver, taille=1):
+        distance = self.distance_to(receiver)
         if distance <= DISTANCE_MAX:
-            msg = Message(self.user_id, receiver.user_id, content, taille)
-            receiver.receive_message(msg)
+            msg = Message(self.usager_id, receiver.usager_id, taille)
             return msg
         return None
 
+    def mettre_a_jour_position(self, x: float, y: float, speed: float, angle: float, time: float):
+        self.x = x
+        self.y = y
+        self.speed = speed
+        self.angle = angle
+        self.time = time
+
+    def distance_to(self, other):
+        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+
     def receive_message(self, message):
-        self.inbox.append(message)
+        return time.time() - message.timestamp
 
-    def move(self, deplacement):
-        self.position += deplacement
-
-class Infrastructure(User):
-    def __init__(self, user_id, position=0):
-        super().__init__(user_id, user_type='infrastructure', position=position)
-
+# Classe pour représenter les métriques de communication
+# entre les utilisateurs
+# La classe a des attributs pour le protocole utilisé, le nombre de messages envoyés,
+# le nombre de messages reçus, le nombre de messages perdus, la charge totale et le délai total
+# La classe a des méthodes pour mettre à jour les métriques, obtenir les métriques et afficher les résultats
 class Metric:
     def __init__(self, protocole):
         self.protocole = protocole
@@ -57,6 +88,17 @@ class Metric:
         else:
             self.messages_perdus += 1
             
+    def get_metrics(self):
+        taux_perte = self.messages_perdus / self.messages_envoyes if self.messages_envoyes > 0 else 0
+        delai_moyen = self.delai / self.messages_recus if self.messages_recus > 0 else 0
+        charge_moyenne = self.charge_totale / self.messages_envoyes if self.messages_envoyes > 0 else 0
+        return  self.delai, delai_moyen, taux_perte, charge_moyenne
+        
+# Classe pour représenter un protocole de communication
+# entre les utilisateurs
+# Chaque protocole a un nom, un temps de transmission, un taux de réussite et une charge par message
+# La classe a une méthode pour transmettre un message entre deux utilisateurs
+# selon le protocole
 class Protocole:
     def __init__(self, nom, temps_transmission, taux_reussite, charge_par_message):
         self.nom = nom
@@ -71,60 +113,105 @@ class Protocole:
         """
         time.sleep(self.temps_transmission)  # simule le délai
         if random.random() < self.taux_reussite:
-            recepteur.receive_message(message)
             return True
         return False
 
-def lire_usagers_depuis_csv(fichier_csv):
-    usagers = []
-    with open(fichier_csv, newline='') as csvfile:
-        lecteur = csv.DictReader(csvfile)
-        for ligne in lecteur:
-            user_id = ligne['user_id']
-            user_type = ligne.get('user_type', 'pieton')
-            position = int(ligne.get('position', 0))
-
-            if user_type == 'infrastructure':
-                usager = Infrastructure(user_id, position)
-            else:
-                usager = User(user_id, user_type, position)
-
-            usagers.append(usager)
-    return usagers
-
-def simuler_communication(usagers, protocole, distance_max=DISTANCE_MAX):
+# Fonction pour simuler la communication entre les utilisateurs
+# selon le protocole donné
+# La fonction prend en entrée une liste d'utilisateurs, un protocole, une métrique et une distance maximale
+def simuler_communication(usagers, protocole, metric, distance_max=DISTANCE_MAX):
     """
     Simule la communication entre les utilisateurs selon le protocole donné.
     """
     for emetteur in usagers:
         for recepteur in usagers:
             if emetteur != recepteur:
-                distance = abs(emetteur.position - recepteur.position)
+                distance = emetteur.distance_to(recepteur)
                 if distance <= distance_max:
-                    message = emetteur.send_message(recepteur, "Hello", taille=1)
+                    message = emetteur.send_message(recepteur, taille=1)
                     if message:
                         protocole.transmettre(message, emetteur, recepteur)
-                        protocole.enregistrer_envoi(True, taille=1)
+                        metric.update_metrics(True, taille=1)
                     else:
-                        protocole.enregistrer_envoi(False)
-    return protocole
+                        metric.update_metrics(False)
+    return metric
 
-def main():    
+# Fonction pour charger les usagers depuis un fichier CSV
+# La fonction prend en entrée le nom du fichier CSV et retourne une liste d'utilisateurs
+# Chaque ligne du fichier CSV représente un usager avec ses attributs
+def charger_usagers_depuis_csv(fichier_csv: str) -> List[User]:
+    df = pd.read_csv(fichier_csv)
+    usagers = []
+
+    for _, ligne in df.iterrows():
+        time = ligne['_time']
+
+        # Ajouter les piétons (VRUs)
+        if pd.notna(ligne['person/_id']):
+            usager = User(
+                usager_id=ligne['person/_id'],
+                x=ligne['person/_x'],
+                y=ligne['person/_y'],
+                angle=ligne['person/_angle'],
+                speed=ligne['person/_speed'],
+                edge=ligne['person/_edge'],
+                time=time,
+                usager_type=ligne['person/_type'],
+                categorie="vru"
+            )
+            usagers.append(usager)
+
+        # Ajouter les véhicules présents à cette ligne
+        i = 0
+        while f"vehicle/{i}/_id" in ligne:
+            veh_id = ligne[f"vehicle/{i}/_id"]
+            if pd.notna(veh_id):
+                usager = User(
+                    usager_id=veh_id,
+                    x=ligne[f"vehicle/{i}/_x"],
+                    y=ligne[f"vehicle/{i}/_y"],
+                    angle=ligne[f"vehicle/{i}/_angle"],
+                    speed=ligne[f"vehicle/{i}/_speed"],
+                    edge=ligne[f"vehicle/{i}/_lane"],
+                    time=time,
+                    usager_type=ligne[f"vehicle/{i}/_type"],
+                    categorie="vehicule"
+                )
+                usagers.append(usager)
+            i += 1
+
+    return usagers
+
+if __name__ == "__main__":  
     # Définir les protocoles
     protocole_v2v = Protocole("V2V", temps_transmission=0.1, taux_reussite=0.9, charge_par_message=1)
     protocole_v2i = Protocole("V2I", temps_transmission=0.5, taux_reussite=0.95, charge_par_message=2)
 
     # Lire les usagers depuis un fichier CSV
-    usagers = lire_usagers_depuis_csv('usagers.csv')
+    usagers = charger_usagers_depuis_csv("sumoTrace.csv")
 
     # Simuler la communication V2V
     metric_v2v = Metric(protocole_v2v)
-    metric_v2v = simuler_communication(usagers, protocole_v2v)
+    metric_v2v = simuler_communication(usagers, protocole_v2v, metric_v2v)
 
     # Simuler la communication V2I
     metric_v2i = Metric(protocole_v2i)
-    metric_v2i = simuler_communication(usagers, protocole_v2i)
+    metric_v2i = simuler_communication(usagers, protocole_v2i, metric_v2i)
+
 
     # Afficher les résultats
     print(f"Protocole V2V: {metric_v2v}")
     print(f"Protocole V2I: {metric_v2i}")
+    print("Métriques V2V:", metric_v2v.get_metrics())
+    print("Métriques V2I:", metric_v2i.get_metrics())
+
+    # Sauvegarder les résultats dans un fichier CSV
+    with open('resultats.csv', mode='w', newline='') as fichier_csv:
+        writer = csv.writer(fichier_csv)
+        writer.writerow(["Protocole", "Messages envoyés", "Messages reçus", "Messages perdus", "Charge totale", "Délai total"])
+        writer.writerow([protocole_v2v.nom, metric_v2v.messages_envoyes, metric_v2v.messages_recus,
+                         metric_v2v.messages_perdus, metric_v2v.charge_totale, metric_v2v.delai])
+        writer.writerow([protocole_v2i.nom, metric_v2i.messages_envoyes, metric_v2i.messages_recus,
+                         metric_v2i.messages_perdus, metric_v2i.charge_totale, metric_v2i.delai])
+    
+ 

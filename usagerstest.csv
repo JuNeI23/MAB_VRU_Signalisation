@@ -1,0 +1,4 @@
+_time,person/_id,person/_x,person/_y,person/_angle,person/_speed,person/_edge,person/_type,vehicle/0/_id,vehicle/0/_x,vehicle/0/_y,vehicle/0/_angle,vehicle/0/_speed,vehicle/0/_lane,vehicle/0/_type
+0,p1,0.0,0.0,0.0,1.0,E0,DEFAULT,v1,10.0,10.0,180.0,5.0,E1,car
+1,p1,1.0,0.0,0.0,1.0,E0,DEFAULT,v1,8.5,10.0,180.0,5.0,E1,car
+2,p1,2.0,0.0,0.0,1.0,E0,DEFAULT,v1,7.0,10.0,180.0,5.0,E1,car
