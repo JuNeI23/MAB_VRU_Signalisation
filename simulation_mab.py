@@ -39,6 +39,34 @@ class Node:
     def within_range(self, other):
         return self.distance_to(other) <= self.range
 
+    def send_message(self, receiver, size):
+        distance = self.distance_to(receiver)
+        if size <= self.processing_capacity and self.within_range(receiver):
+            receiver_id = getattr(receiver, 'user_id', getattr(receiver, 'id', None))
+            message = Message(self.user_id, receiver_id, self.priority, size)
+            self.queue.put((message.priority, message))
+            print(f"[INFO] {self.user_id} → {receiver_id} : message prêt (distance: {distance:.2f})")
+        else:
+            print(f"[ERROR] {self.user_id} → {getattr(receiver, 'user_id', getattr(receiver, 'id', None))} : size too big or out of range (distance: {distance:.2f}, range: {self.range})")
+
+    def process_queue(self, users, metric):
+        messages_per_receiver = {}
+        while not self.queue.empty():
+            _, message = self.queue.get()
+            receiver = users.get(message.receiver_id, None)
+            if receiver:
+                if receiver not in messages_per_receiver:
+                    messages_per_receiver[receiver] = []
+                messages_per_receiver[receiver].append(message)
+        for receiver, messages in messages_per_receiver.items():
+            messages.sort(key=lambda msg: msg.priority)
+            for message in messages:
+                if not getattr(receiver, 'protocol', None):
+                    receiver.protocol = self.protocol
+                transmission_delay = self.protocol.transmit_message(self, message, receiver)
+                queue_delay = time.time() - message.timestamp
+                metric.update_metrics(transmission_delay, queue_delay, self.protocol.network_load)
+
 # Classe User héritant de Node
 class User(Node):
     def __init__(self, usager_id: str, x: float, y: float, angle: float, speed: float, position: float,
@@ -63,37 +91,6 @@ class User(Node):
         self.categorie = categorie
         self.protocol = None
         self.queue_size = 10 if categorie == "vru" else 50
-
-    def send_message(self, receiver, size):
-        distance = self.distance_to(receiver)
-        if size <= self.processing_capacity and self.within_range(receiver):
-            message = Message(self.user_id, receiver.user_id, self.priority, size)
-            self.queue.put((message.priority, message))
-            print(f"[INFO] {self.user_id} → {receiver.user_id} : message prêt (distance: {distance:.2f})")
-        else:
-            if not self.within_range(receiver):
-                print(f"[ERROR] {self.user_id} cannot reach {receiver.user_id} (distance: {distance:.2f}, range: {self.range})")
-            else:
-                print(f"[ERROR] Message not sent. Distance: {distance:.2f}, Range: {self.range}, Size: {size}, Processing Capacity: {self.processing_capacity}")
-
-    def process_queue(self, users, metric):
-        messages_per_receiver = {}
-        while not self.queue.empty():
-            _, message = self.queue.get()
-            receiver = users.get(message.receiver_id, None)
-            if receiver:
-                if not self.within_range(receiver):
-                    print(f"[ERROR] {self.user_id} → {receiver.user_id}: hors de portée")
-            if receiver and self.within_range(receiver):
-                if receiver not in messages_per_receiver:
-                    messages_per_receiver[receiver] = []
-                messages_per_receiver[receiver].append(message)
-        for receiver, messages in messages_per_receiver.items():
-            messages.sort(key=lambda msg: msg.priority)
-            for message in messages:
-                transmission_delay = self.protocol.transmit_message(self, message, receiver)
-                queue_delay = time.time() - message.timestamp
-                metric.update_metrics(transmission_delay, queue_delay, self.protocol.network_load)
 
 # Classe pour représenter les métriques de communication
 # entre les utilisateurs
@@ -159,32 +156,6 @@ class Infrastructure(Node):
         self.protocol = protocol
         self.time = time
         self.user_type = 'Infrastructure'
-
-    def send_message(self, receiver, size):
-        distance = self.distance_to(receiver)
-        receiver_id = getattr(receiver, 'user_id', getattr(receiver, 'id', None))
-        if size <= self.processing_capacity and self.within_range(receiver):
-            message = Message(self.id, receiver_id, self.priority, size)
-            self.queue.put((message.priority, message))
-            print(f"[INFO] {self.id} → {receiver_id} : message prêt (distance: {distance:.2f})")
-        else:
-            print(f"[ERROR] Infrastructure {self.id} → {receiver_id} : size too big or out of range (distance: {distance:.2f}, range: {self.range})")
-
-    def process_queue(self, users, metric):
-        messages_per_receiver = {}
-        while not self.queue.empty():
-            _, message = self.queue.get()
-            receiver = users.get(message.receiver_id, None)
-            if receiver:
-                if receiver not in messages_per_receiver:
-                    messages_per_receiver[receiver] = []
-                messages_per_receiver[receiver].append(message)
-        for receiver, messages in messages_per_receiver.items():
-            messages.sort(key=lambda msg: msg.priority)
-            for message in messages:
-                transmission_delay = self.protocol.transmit_message(self, message, receiver)
-                queue_delay = time.time() - message.timestamp
-                metric.update_metrics(transmission_delay, queue_delay, self.protocol.network_load)
 
 
 # Fonction pour charger les usagers depuis un fichier CSV
