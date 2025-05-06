@@ -3,8 +3,8 @@ from typing import List, Dict
 import pandas as pd
 import csv
 
-from models import User, Infrastructure, Node
-from protocols import Protocole, Metric
+from simulation.models import User, Infrastructure, Node
+from simulation.protocols import Protocole, Metric
 
 logger = logging.getLogger(__name__)
 

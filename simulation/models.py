@@ -7,7 +7,7 @@ from typing import Optional, Dict
 # Avoid circular imports when type‐checking
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from protocols import Protocole, Metric
+    from simulation.protocols import Protocole, Metric
 
 logger = logging.getLogger(__name__)
 
