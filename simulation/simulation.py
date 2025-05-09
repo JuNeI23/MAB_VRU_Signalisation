@@ -1,4 +1,3 @@
-import logging
 from typing import List, Dict
 import pandas as pd
 import csv
@@ -6,10 +5,8 @@ import csv
 from simulation.models import User, Infrastructure, Node
 from simulation.protocols import Protocole, Metric
 
-logger = logging.getLogger(__name__)
-
 def charger_usagers_depuis_csv(fichier_csv: str) -> List[Node]:
-    logger.info("Loading users from CSV: %s", fichier_csv)
+    print(f"[Étape] Chargement du fichier CSV : {fichier_csv}")
     df = pd.read_csv(fichier_csv)
     usagers: List[Node] = []
     for _, row in df.iterrows():
@@ -57,19 +54,18 @@ def charger_usagers_depuis_csv(fichier_csv: str) -> List[Node]:
                 )
                 usagers.append(usager)
             i += 1
-    logger.info("%d users loaded", len(usagers))
     return usagers
 
 def regrouper_par_temps(usagers: List[Node]) -> Dict[float, List[Node]]:
-    logger.info("Grouping users by time")
+    print("[Étape] Regroupement des usagers par temps")
     result: Dict[float, List[Node]] = {}
     for u in usagers:
         result.setdefault(u.time, []).append(u)
     return result
 
 def simuler_communication(users: List[Node], protocole: Protocole, metric: Metric, mode: str = "v2v") -> Metric:
+    print(f"[Étape] Simulation de communication (mode = {mode})")
     if mode == "v2v":
-        logger.info("Running V2V simulation with %s", protocole.name)
         v2v_users = [u for u in users if isinstance(u, User)]
         user_dict = {u.user_id: u for u in v2v_users}
         for sender in v2v_users:
@@ -81,11 +77,9 @@ def simuler_communication(users: List[Node], protocole: Protocole, metric: Metri
             sender.process_queue(user_dict, metric)
 
     elif mode == "v2i":
-        logger.info("Running V2I simulation with %s", protocole.name)
         infra_nodes = [u for u in users if isinstance(u, Infrastructure)]
         normal_users = [u for u in users if isinstance(u, User)]
         if len(normal_users) <= 1 or not infra_nodes:
-            logger.warning("No possible V2I exchanges")
             return metric
         for u in normal_users:
             for v in normal_users:
@@ -94,23 +88,24 @@ def simuler_communication(users: List[Node], protocole: Protocole, metric: Metri
                         u.protocol = protocole
                         infra.protocol = protocole
                         v.protocol = protocole
-                        logger.debug("V2I %s -> infra %s", u.user_id, infra.user_id)
                         u.send_message(infra, size=1)
                         infra.process_queue({infra.user_id: infra}, metric)
-                        logger.debug("V2I infra %s -> %s", infra.user_id, v.user_id)
                         infra.send_message(v, size=1)
                         infra.process_queue({v.user_id: v}, metric)
     return metric
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    print("[Étape] Démarrage de la simulation")
     users = charger_usagers_depuis_csv("sumoTrace_edge.csv")
+    print(f"[Étape] {len(users)} usagers chargés")
     groups = regrouper_par_temps(users)
+    print(f"[Étape] {len(groups)} groupes temporels créés")
 
     protocole_v2v = Protocole("V2V", network_load=0.1, packet_loss_rate=0.1, transmission_time=0.1)
     protocole_v2i = Protocole("V2I", network_load=0.1, packet_loss_rate=0.05, transmission_time=0.5)
 
     with open('resultats.csv', 'w', newline='') as csvfile:
+        print("[Étape] Écriture des résultats dans 'resultats.csv'")
         writer = csv.writer(csvfile)
         writer.writerow(["Temps", "Protocole", "Délai moyen (s)", "Taux de perte (%)", "Charge moyenne"])
         for t in sorted(groups):
@@ -139,5 +134,4 @@ def main():
                 round(loss2 * 100, 2) if loss2 is not None else "Ø",
                 round(load2, 4) if load2 is not None else "Ø",
             ])
-
-    logger.info("Simulation complete. Results written to 'resultats.csv'.")
+    print("Simulation terminée")

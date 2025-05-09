@@ -1,6 +1,5 @@
 import queue
 import time
-import logging
 from dataclasses import dataclass, field
 from typing import Optional, Dict
 
@@ -9,7 +8,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from simulation.protocols import Protocole, Metric
 
-logger = logging.getLogger(__name__)
 
 @dataclass(order=True)
 class Message:
@@ -49,12 +47,6 @@ class Node:
         if size <= self.processing_capacity and self.within_range(receiver):
             message = Message(self.priority, self.user_id, receiver.user_id, size)
             self.queue.put(message)
-            logger.info(f"{self.user_id} → {receiver.user_id} : message ready (distance: {distance:.2f})")
-        else:
-            logger.error(
-                f"{self.user_id} → {getattr(receiver, 'user_id', None)} : failed to send message "
-                f"(distance: {distance:.2f}, range: {self.range}, size: {size})"
-            )
 
     def process_queue(self, users: Dict[str, 'Node'], metric: 'Metric') -> None:
         messages_by_receiver: Dict['Node', list[Message]] = {}

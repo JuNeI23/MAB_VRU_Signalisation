@@ -1,6 +1,16 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+from simulation.simulation import main
 
+# Lecture unique et nettoyage du CSV
+DF = pd.read_csv('resultats.csv').replace('Ø', np.nan)
+DF = DF.dropna(subset=['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne'])
+DF[['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']] = DF[
+    ['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']
+].apply(pd.to_numeric)
+
+# Classe pour l'algorithme MAB epsilon-greedy
 class EpsilonGreedyMAB:
     def __init__(self, n_arms, epsilon):
         """
@@ -20,7 +30,7 @@ class EpsilonGreedyMAB:
 
         :return: index du bras sélectionné
         """
-        if np.random() < self.epsilon:
+        if np.random.random() < self.epsilon:
             # Exploration : choisir un bras au hasard
             return np.random.randint(self.n_arms)
         else:
@@ -42,54 +52,107 @@ class EpsilonGreedyMAB:
 
     def __str__(self):
         return f"Counts: {self.counts}\nValues: {self.values}"
+
+# Centralized evolution function
+def run_evolution(df: pd.DataFrame, epsilon: float, n_arms: int = 3):
+    """
+    Run ε-greedy MAB updates on V2V and V2I metrics over time.
+    Returns (times, history_v2v, history_v2i).
+    """
+    times = sorted(df['Temps'].unique())
+    # Préallocation des historiques
+    n_times = len(times)
+    history_v2v = np.zeros((n_times, n_arms))
+    history_v2i = np.zeros((n_times, n_arms))
     
-#Chargement des données
-data = pd.read_csv('data.csv',header=None)
+    # Initialisation des MABs
+    eg_v2v = EpsilonGreedyMAB(n_arms, epsilon)
+    eg_v2i = EpsilonGreedyMAB(n_arms, epsilon)
+    
+    # Boucle sur les temps et mise à jour des MABs
+    for idx, t in enumerate(times):
+        row_v2v = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')]
+        row_v2i = df[(df['Temps'] == t) & (df['Protocole'] == 'V2I')]
+        if row_v2v.empty or row_v2i.empty:
+            continue
+        v2v = row_v2v.iloc[0]
+        v2i = row_v2i.iloc[0]
+        # Calcul des récompenses vectorisées
+        metrics_v2v = np.array([
+            v2v['Délai moyen (s)'],
+            v2v['Taux de perte (%)'],
+            v2v['Charge moyenne']
+        ])
+        metrics_v2i = np.array([
+            v2i['Délai moyen (s)'],
+            v2i['Taux de perte (%)'],
+            v2i['Charge moyenne']
+        ])
+        for arm in range(n_arms):
+            eg_v2v.update(arm, metrics_v2v[arm])
+            eg_v2i.update(arm, metrics_v2i[arm])
+            history_v2v[idx, arm] = eg_v2v.values[arm]
+            history_v2i[idx, arm] = eg_v2i.values[arm]
+    return times, history_v2v, history_v2i
 
-# Extraction des données V2V et V2I
-# Extraction des données V2V
-v2v_delay = data.iloc[0, 0]
-v2v_loss_rate = data.iloc[0, 1]
-v2v_load = data.iloc[0, 2]
+# Fonction pour tracer l'évolution des valeurs ε-greedy
+def plot_evolution(epsilon=0.1):
+    """
+    Plot the evolution of the ε-greedy MAB estimated values over time.
+    """
+    df = DF
 
-# Extraction des données V2I
-v2i_delay = data.iloc[1, 0]
-v2i_loss_rate = data.iloc[1, 1]
-v2i_load = data.iloc[1, 2]
+    times, hist_v2v, hist_v2i = run_evolution(df, epsilon)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
+
+    # Plot V2V evolution
+    for arm in range(hist_v2v.shape[1]):
+        ax1.plot(times, hist_v2v[:, arm], label=f'Arm {arm}')
+    ax1.set_xlabel('Time')
+    ax1.set_ylabel('Estimated Value')
+    ax1.set_title('V2V MAB Estimated Values Over Time')
+    ax1.legend()
+
+    # Plot V2I evolution
+    for arm in range(hist_v2i.shape[1]):
+        ax2.plot(times, hist_v2i[:, arm], label=f'Arm {arm}')
+    ax2.set_xlabel('Time')
+    ax2.set_ylabel('Estimated Value')
+    ax2.set_title('V2I MAB Estimated Values Over Time')
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+# Comparison function
+def compare_protocols(epsilon=0.1):
+    """
+    Compare the final estimated values of the V2V and V2I protocols
+    and print which one is better.
+    """
+    df = DF
+
+    # Run evolution to get histories
+    times, hist_v2v, hist_v2i = run_evolution(df, epsilon)
+
+    # Maximum des valeurs estimées
+    best_v2v = hist_v2v.max()
+    best_v2i = hist_v2i.max()
+
+    # Affichage des résultats
+    print(f"Meilleure valeur estimée V2V : {best_v2v:.3f}")
+    print(f"Meilleure valeur estimée V2I : {best_v2i:.3f}")
+    if best_v2v > best_v2i:
+        print("Conclusion : le protocole V2V est meilleur.")
+    elif best_v2i > best_v2v:
+        print("Conclusion : le protocole V2I est meilleur.")
+    else:
+        print("Conclusion : les deux protocoles sont équivalents.")
 
 
-#Inversion des valeurs pour la simulation et pondération
-delay_weight = 1   
-loss_rate_weight = 1
-load_weight = 0.2
-
-# Initialisation de l'algorithme MAB pour V2V et V2I
-epsilon = 0.1
-eg_mab_v2v = EpsilonGreedyMAB(n_arms=3, epsilon=epsilon)
-eg_mab_v2i = EpsilonGreedyMAB(n_arms=3, epsilon=epsilon)
-
-# Mise à jour des bras avec les données V2V
-eg_mab_v2v.update(0, v2v_delay)
-eg_mab_v2v.update(1, v2v_loss_rate)
-eg_mab_v2v.update(2, v2v_load)
-
-# Mise à jour des bras avec les données V2I
-eg_mab_v2i.update(0, v2i_delay)
-eg_mab_v2i.update(1, v2i_loss_rate)
-eg_mab_v2i.update(2, v2i_load)
-
-# Affichage des résultats
-print("V2V MAB Results:")
-print(eg_mab_v2v)
-print("\nV2I MAB Results:")
-print(eg_mab_v2i)
-# Affichage des bras sélectionnés
-print("\nV2V Selected Arm:", eg_mab_v2v.select_arm())
-print("V2I Selected Arm:", eg_mab_v2i.select_arm())
-# Affichage des valeurs estimées
-print("\nV2V Estimated Values:", eg_mab_v2v.values)
-print("V2I Estimated Values:", eg_mab_v2i.values)
-# Affichage des compteurs
-print("\nV2V Counts:", eg_mab_v2v.counts)
-print("V2I Counts:", eg_mab_v2i.counts)
-
+if __name__ == "__main__":
+    main()
+    # Exécutez les fonctions de traçage et de comparaison
+    plot_evolution()
+    compare_protocols()
