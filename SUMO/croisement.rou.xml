@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2025-04-09 15:26:46 by Eclipse SUMO netedit Version 1.22.0
+<!-- generated on 2025-05-16 09:00:17 by Eclipse SUMO netedit Version 1.22.0
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <!-- VTypes -->
+    <vType id="infra" vClass="drone"/>
     <!-- Vehicles, persons and containers (sorted by depart) -->
     <trip id="t_0" type="DEFAULT_BIKETYPE" depart="0.00" fromJunction="J4" toJunction="J3"/>
     <person id="p_0" depart="0.00">
         <personTrip fromJunction="J1" toJunction="J4"/>
     </person>
+    <container id="c_0" type="infra" depart="0.00">
+        <stop edge="E2" endPos="2.02" duration="203.00"/>
+    </container>
     <person id="p_1" depart="5.00">
         <personTrip fromJunction="J3" toJunction="J4"/>
     </person>
