@@ -5,23 +5,18 @@ import simulation.simulation as simulation
 import pandas as pd
 import numpy as np
 
-def load_data(v2v_path: str = 'resultats_V2V.csv', v2i_path: str = 'resultats_V2I.csv') -> pd.DataFrame:
+def load_data(resultat_path: str = 'resultats.csv') -> pd.DataFrame:
     """
-    Charge et nettoie les résultats V2V et V2I, puis renvoie un DataFrame fusionné.
+    Charge les données de simulation à partir d'un fichier CSV.
     """
-    DF_V2V = pd.read_csv(v2v_path).replace({'N/A', np.nan})
-    DF_V2V = DF_V2V.dropna(how='all', subset=['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne'])
-    DF_V2V[['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']] = DF_V2V[
+    DF = pd.read_csv(resultat_path)
+    DF.replace({'N/A': 0}, inplace=True)
+    DF = DF.dropna(how='all', subset=['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne'])
+    DF[['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']] = DF[
         ['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']
     ].apply(pd.to_numeric, errors='coerce')
 
-    DF_V2I = pd.read_csv(v2i_path).replace({'N/A': np.nan})
-    DF_V2I = DF_V2I.dropna(how='all', subset=['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne'])
-    DF_V2I[['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']] = DF_V2I[
-        ['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']
-    ].apply(pd.to_numeric, errors='coerce')
 
-    DF = pd.merge(DF_V2V, DF_V2I, on='Temps', suffixes=('_V2V', '_V2I'))
     return DF
 
 def simu():

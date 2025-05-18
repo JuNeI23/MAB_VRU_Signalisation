@@ -12,31 +12,40 @@ def charger_usagers_depuis_csv(fichier_csv: str) -> List[Node]:
     usagers: List[Node] = []
     for _, row in df.iterrows():
         t = row['_time']
-        if pd.notna(row.get('person/1/_id')):
+
+        # Container treated as Infrastructure
+        if pd.notna(row.get('container/_id')):
             proto = Protocole("V2I", network_load=0.1, packet_loss_rate=0.05, transmission_time=0.5)
             infra = Infrastructure(
-                id=row['person/1/_id'],
+                id=row['container/_id'],
                 protocol=proto,
-                x=row['person/1/_x'],
-                y=row['person/1/_y'],
+                x=row['container/_x'],
+                y=row['container/_y'],
                 processing_capacity=100,
                 time=t
             )
             usagers.append(infra)
-        if pd.notna(row.get('person/0/_id')):
-            user = User(
-                usager_id=row['person/0/_id'],
-                x=row['person/0/_x'],
-                y=row['person/0/_y'],
-                angle=row['person/0/_angle'],
-                speed=row['person/0/_speed'],
-                position=row['person/0/_pos'],
-                lane=row['person/0/_edge'],
-                time=t,
-                usager_type=row['person/0/_type'],
-                categorie="vru"
-            )
-            usagers.append(user)
+
+        # All persons treated as Users (regardless of index)
+        for key in row.keys():
+            if key.startswith("person/") and key.endswith("/_id"):
+                prefix = key[:-len("/_id")]
+                if pd.notna(row.get(key)):
+                    user = User(
+                        usager_id=row[key],
+                        x=row.get(f"{prefix}/_x"),
+                        y=row.get(f"{prefix}/_y"),
+                        angle=row.get(f"{prefix}/_angle"),
+                        speed=row.get(f"{prefix}/_speed"),
+                        position=row.get(f"{prefix}/_pos"),
+                        lane=row.get(f"{prefix}/_edge"),
+                        time=t,
+                        usager_type=row.get(f"{prefix}/_type"),
+                        categorie="vru"
+                    )
+                    usagers.append(user)
+
+        # Vehicles as before
         i = 0
         while f"vehicle/{i}/_id" in row:
             vid = row[f"vehicle/{i}/_id"]
@@ -106,18 +115,19 @@ def main():
     protocole_v2v = Protocole("V2V", network_load=0.1, packet_loss_rate=0.1, transmission_time=0.1)
     protocole_v2i = Protocole("V2I", network_load=0.1, packet_loss_rate=0.05, transmission_time=0.5)
 
-    with open('resultats_v2v.csv', 'w', newline='') as csvfile:
-        print("[Étape] Écriture des résultats dans 'resultats_v2v.csv'")
+    with open('resultats.csv', 'w', newline='') as csvfile:
+        print("[Étape] Écriture des résultats dans 'resultats.csv'")
         writer = csv.writer(csvfile)
         writer.writerow(["Temps", "Protocole", "Délai moyen (s)", "Taux de perte (%)", "Charge moyenne"])
-        for t in sorted(groups):
-            batch = groups[t]
-            if len(batch) <= 1:
-                failed_times.append(t)
-                continue
-
+        
+        for t, batch in groups.items():
+            
+            # Simulation de la communication V2V et V2I
             mv2v = simuler_communication(batch, protocole_v2v, Metric(), "v2v")
             avg, loss, load = mv2v.get_metrics()
+
+            mv2i = simuler_communication(batch, protocole_v2i, Metric(), "v2i")
+            avg2, loss2, load2 = mv2i.get_metrics()
 
             # Si la simulation échoue, on ajoute le temps à failed_times et on continue à la prochaine itération
             if avg is None:
@@ -134,32 +144,12 @@ def main():
                 round(load, 4) if load is not None else "N/A",
             ])
 
-    with open('resultats_V2I.csv', 'w', newline='') as csvfile:
-                
-        print("[Étape] Écriture des résultats dans 'resultats_V2I.csv'")
-        writer = csv.writer(csvfile)
-        writer.writerow(["Temps", "Protocole", "Délai moyen (s)", "Taux de perte (%)", "Charge moyenne"])
-        for t in sorted(groups):
-            batch = groups[t]
-            if len(batch) <= 1:
-                failed_times.append(t)
-                continue
-
-            # Simulation V2I
-            mv2i = simuler_communication(batch, protocole_v2i, Metric(), "v2i")
-            avg, loss, load = mv2i.get_metrics()
-
-            # Si la simulation échoue, on ajoute le temps à failed_times et on continue à la prochaine itération
-            if avg is None:
-                failed_times.append(t)
-                continue
-            
-            # Écriture des résultats
             writer.writerow([
                 t,
                 protocole_v2i.name,
-                round(avg, 4) if avg is not None else "N/A",
-                round(loss * 100, 2) if loss is not None else "N/A",
-                round(load, 4) if load is not None else "N/A",
+                round(avg2, 4) if avg2 is not None else "N/A",
+                round(loss2 * 100, 2) if loss2 is not None else "N/A",
+                round(load2, 4) if load2 is not None else "N/A",
             ])
+
     print(f"[Résultat] Temps sans communications réussies : {failed_times}")

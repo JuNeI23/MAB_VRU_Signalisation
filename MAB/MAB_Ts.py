@@ -42,14 +42,11 @@ class GaussianThompsonSampling:
         return f"Counts: {self.counts}\nMeans: {self.means}"
 
 
-def run_evolution(df: pd.DataFrame, n_arms: int = 3):
+def run_evolution(df: pd.DataFrame, n_arms: int = 2):
     times = sorted(df['Temps'].unique())
     n_times = len(times)
-    history_v2v = np.zeros((n_times, n_arms))
-    history_v2i = np.zeros((n_times, n_arms))
-
-    mab_v2v = GaussianThompsonSampling(n_arms)
-    mab_v2i = GaussianThompsonSampling(n_arms)
+    mab = GaussianThompsonSampling(n_arms)
+    history = np.zeros((n_times, n_arms))
 
     for idx, t in enumerate(times):
         row_v2v = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')]
@@ -59,45 +56,38 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 3):
         v2v = row_v2v.iloc[0]
         v2i = row_v2i.iloc[0]
 
-        metrics_v2v = np.array([
-            v2v['Délai moyen (s)'],
-            v2v['Taux de perte (%)'],
-            v2v['Charge moyenne']
-        ])
-        metrics_v2i = np.array([
-            v2i['Délai moyen (s)'],
-            v2i['Taux de perte (%)'],
-            v2i['Charge moyenne']
-        ])
-        for arm in range(n_arms):
-            mab_v2v.update(arm, metrics_v2v[arm])
-            mab_v2i.update(arm, metrics_v2i[arm])
-            history_v2v[idx, arm] = mab_v2v.means[arm]
-            history_v2i[idx, arm] = mab_v2i.means[arm]
+        reward_v2v = - (0.5 * v2v['Délai moyen (s)'] + 0.3 * v2v['Taux de perte (%)'] + 0.2 * v2v['Charge moyenne'])
+        reward_v2i = - (0.5 * v2i['Délai moyen (s)'] + 0.3 * v2i['Taux de perte (%)'] + 0.2 * v2i['Charge moyenne'])
 
-    return times, history_v2v, history_v2i
+        # Select a protocol arm (0=V2V, 1=V2I) and update only that arm
+        arm = mab.select_arm()
+        if arm == 0:
+            mab.update(0, reward_v2v)
+        else:
+            mab.update(1, reward_v2i)
+
+        # Record the current estimated means for both arms
+        history[idx, :] = mab.means
+
+    return times, history
 
 
 def plot_evolution(df: pd.DataFrame):
     """
     Trace l'évolution des valeurs de Thompson Sampling pour V2V et V2I.
     """
-    times, hist_v2v, hist_v2i = run_evolution(df)
+    times, history = run_evolution(df)
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
 
-    ax1.plot(times, hist_v2v[:, 0], label='Arm 0, Délai moyen (s)')
-    ax1.plot(times, hist_v2v[:, 1], label='Arm 1, Taux de perte (%)')
-    ax1.plot(times, hist_v2v[:, 2], label='Arm 2, Charge moyenne')
-    ax1.set_title('V2V Thompson Sampling Means Over Time')
+    ax1.plot(times, history[:, 0], label='V2V')
+    ax1.set_title('V2V Thompson Sampling Mean Over Time')
     ax1.set_xlabel('Temps')
     ax1.set_ylabel('Mean reward')
     ax1.legend()
 
-    ax2.plot(times, hist_v2i[:, 0], label='Arm 0, Délai moyen (s)')
-    ax2.plot(times, hist_v2i[:, 1], label='Arm 1, Taux de perte (%)')
-    ax2.plot(times, hist_v2i[:, 2], label='Arm 2, Charge moyenne')
-    ax2.set_title('V2I Thompson Sampling Means Over Time')
+    ax2.plot(times, history[:, 1], label='V2I')
+    ax2.set_title('V2I Thompson Sampling Mean Over Time')
     ax2.set_xlabel('Temps')
     ax2.set_ylabel('Mean reward')
     ax2.legend()
@@ -111,9 +101,9 @@ def compare_protocols(df: pd.DataFrame):
     Compare les protocoles V2V et V2I en utilisant Thompson Sampling.
     """
 
-    times, hist_v2v, hist_v2i = run_evolution(df)
-    best_v2v = hist_v2v.max()
-    best_v2i = hist_v2i.max()
+    times, history = run_evolution(df)
+    best_v2v = history[:, 0].max()
+    best_v2i = history[:, 1].max()
 
     print(f"Meilleure moyenne Thompson V2V : {best_v2v:.3f}")
     print(f"Meilleure moyenne Thompson V2I : {best_v2i:.3f}")

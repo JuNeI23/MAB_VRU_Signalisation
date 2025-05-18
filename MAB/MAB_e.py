@@ -44,22 +44,16 @@ class EpsilonGreedyMAB:
         self.values[chosen_arm] = ((n - 1) / float(n)) * value + (1 / float(n)) * reward
 
 # Centralized evolution function
-def run_evolution(df: pd.DataFrame, epsilon: float, n_arms: int = 3):
+def run_evolution(df: pd.DataFrame, epsilon: float, n_arms: int = 2):
     """
-    Run ε-greedy MAB updates on V2V and V2I metrics over time.
-    Returns (times, history_v2v, history_v2i).
+    Run ε-greedy MAB updates to select between V2V and V2I protocols over time.
+    Returns (times, history) with history shape (n_times, n_arms).
     """
     times = sorted(df['Temps'].unique())
-    # Préallocation des historiques
     n_times = len(times)
-    history_v2v = np.zeros((n_times, n_arms))
-    history_v2i = np.zeros((n_times, n_arms))
-    
-    # Initialisation des MABs
-    eg_v2v = EpsilonGreedyMAB(n_arms, epsilon)
-    eg_v2i = EpsilonGreedyMAB(n_arms, epsilon)
-    
-    # Boucle sur les temps et mise à jour des MABs
+    eg = EpsilonGreedyMAB(n_arms, epsilon)
+    history = np.zeros((n_times, n_arms))
+
     for idx, t in enumerate(times):
         row_v2v = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')]
         row_v2i = df[(df['Temps'] == t) & (df['Protocole'] == 'V2I')]
@@ -67,44 +61,39 @@ def run_evolution(df: pd.DataFrame, epsilon: float, n_arms: int = 3):
             continue
         v2v = row_v2v.iloc[0]
         v2i = row_v2i.iloc[0]
-        # Calcul des récompenses vectorisées
-        metrics_v2v = np.array([
-            v2v['Délai moyen (s)'],
-            v2v['Taux de perte (%)'],
-            v2v['Charge moyenne']
-        ])
-        metrics_v2i = np.array([
-            v2i['Délai moyen (s)'],
-            v2i['Taux de perte (%)'],
-            v2i['Charge moyenne']
-        ])
-        for arm in range(n_arms):
-            eg_v2v.update(arm, metrics_v2v[arm])
-            eg_v2i.update(arm, metrics_v2i[arm])
-            history_v2v[idx, arm] = eg_v2v.values[arm]
-            history_v2i[idx, arm] = eg_v2i.values[arm]
-    return times, history_v2v, history_v2i
+        # Compute weighted rewards
+        reward_v2v = - (0.5 * v2v['Délai moyen (s)'] + 0.3 * v2v['Taux de perte (%)'] + 0.2 * v2v['Charge moyenne'])
+        reward_v2i = - (0.5 * v2i['Délai moyen (s)'] + 0.3 * v2i['Taux de perte (%)'] + 0.2 * v2i['Charge moyenne'])
+
+        # Select an arm (0 = V2V, 1 = V2I) and update only that arm
+        arm = eg.select_arm()
+        if arm == 0:
+            eg.update(0, reward_v2v)
+        else:
+            eg.update(1, reward_v2i)
+
+        # Record estimated values for both arms
+        history[idx, :] = eg.values
+    return times, history
 
 # Fonction pour tracer l'évolution des valeurs ε-greedy
 def plot_evolution(df: pd.DataFrame, epsilon=0.1):
     """
     Plot the evolution of the ε-greedy MAB estimated values over time.
     """
-    times, hist_v2v, hist_v2i = run_evolution(df, epsilon)
+    times, history = run_evolution(df, epsilon)
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
 
-    # Plot V2V evolution
-    for arm in range(hist_v2v.shape[1]):
-        ax1.plot(times, hist_v2v[:, arm], label=f'Arm {arm}')
+    # Plot V2V evolution (arm 0)
+    ax1.plot(times, history[:, 0], label='V2V')
     ax1.set_xlabel('Time')
     ax1.set_ylabel('Estimated Value')
     ax1.set_title('V2V MAB Estimated Values Over Time')
     ax1.legend()
 
-    # Plot V2I evolution
-    for arm in range(hist_v2i.shape[1]):
-        ax2.plot(times, hist_v2i[:, arm], label=f'Arm {arm}')
+    # Plot V2I evolution (arm 1)
+    ax2.plot(times, history[:, 1], label='V2I')
     ax2.set_xlabel('Time')
     ax2.set_ylabel('Estimated Value')
     ax2.set_title('V2I MAB Estimated Values Over Time')
@@ -120,11 +109,11 @@ def compare_protocols(df: pd.DataFrame, epsilon=0.1):
     and print which one is better.
     """
     # Run evolution to get histories
-    times, hist_v2v, hist_v2i = run_evolution(df, epsilon)
+    times, history = run_evolution(df, epsilon)
 
     # Maximum des valeurs estimées
-    best_v2v = hist_v2v.max()
-    best_v2i = hist_v2i.max()
+    best_v2v = history[:, 0].max()
+    best_v2i = history[:, 1].max()
 
     # Affichage des résultats
     print(f"Meilleure valeur estimée V2V : {best_v2v:.3f}")
@@ -135,4 +124,3 @@ def compare_protocols(df: pd.DataFrame, epsilon=0.1):
         print("Conclusion : le protocole V2I est meilleur.")
     else:
         print("Conclusion : les deux protocoles sont équivalents.")
-

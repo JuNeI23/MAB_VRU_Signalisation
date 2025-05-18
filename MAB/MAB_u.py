@@ -43,19 +43,16 @@ class UCBMAB:
 
 
 
-def run_evolution(df: pd.DataFrame, n_arms: int = 3):
+def run_evolution(df: pd.DataFrame, n_arms: int = 2):
     """
     Identique à votre version ε-greedy, mais avec UCB.
-    Retourne (times, history_v2v, history_v2i).
+    Retourne (times, history).
     """
     times = sorted(df['Temps'].unique())
     # Préallocation des historiques
     n_times = len(times)
-    history_v2v = np.zeros((n_times, n_arms))
-    history_v2i = np.zeros((n_times, n_arms))
-
-    mab_v2v = UCBMAB(n_arms)
-    mab_v2i = UCBMAB(n_arms)
+    mab = UCBMAB(n_arms)
+    history = np.zeros((n_times, n_arms))
 
     for idx, t in enumerate(times):
         row_v2v = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')]
@@ -65,24 +62,21 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 3):
         v2v = row_v2v.iloc[0]
         v2i = row_v2i.iloc[0]
 
-        # Calcul des récompenses vectorisées
-        metrics_v2v = np.array([
-            v2v['Délai moyen (s)'],
-            v2v['Taux de perte (%)'],
-            v2v['Charge moyenne']
-        ])
-        metrics_v2i = np.array([
-            v2i['Délai moyen (s)'],
-            v2i['Taux de perte (%)'],
-            v2i['Charge moyenne']
-        ])
-        for arm in range(n_arms):
-            mab_v2v.update(arm, metrics_v2v[arm])
-            mab_v2i.update(arm, metrics_v2i[arm])
-            history_v2v[idx, arm] = mab_v2v.values[arm]
-            history_v2i[idx, arm] = mab_v2i.values[arm]
+        # Calcul de la récompense scalaire pondérée (négative car on veut minimiser)
+        reward_v2v = - (0.5 * v2v['Délai moyen (s)'] + 0.3 * v2v['Taux de perte (%)'] + 0.2 * v2v['Charge moyenne'])
+        reward_v2i = - (0.5 * v2i['Délai moyen (s)'] + 0.3 * v2i['Taux de perte (%)'] + 0.2 * v2i['Charge moyenne'])
 
-    return times, history_v2v, history_v2i
+        # Select an arm (0=V2V, 1=V2I) and update that arm
+        arm = mab.select_arm()
+        if arm == 0:
+            mab.update(0, reward_v2v)
+        else:
+            mab.update(1, reward_v2i)
+
+        # Record estimated values for both arms
+        history[idx, :] = mab.values
+
+    return times, history
 
 # Fonction pour tracer l'évolution des valeurs UCB
 def plot_evolution(df: pd.DataFrame):
@@ -90,25 +84,21 @@ def plot_evolution(df: pd.DataFrame):
     Trace l’évolution des valeurs estimées UCB pour V2V et V2I.
     """
 
-    times, hist_v2v, hist_v2i = run_evolution(df)
+    times, history = run_evolution(df)
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
 
     # Tracer les valeurs UCB pour V2V et V2I
 
     # Tracer les valeurs UCB pour V2V
-    ax1.plot(times, hist_v2v[:, 0], label='Arm 0, Délai moyen (s)')
-    ax1.plot(times, hist_v2v[:, 1], label='Arm 1, Taux de perte (%)')
-    ax1.plot(times, hist_v2v[:, 2], label='Arm 2, Charge moyenne')
+    ax1.plot(times, history[:, 0], label='V2V')
     ax1.set_title('V2V UCB Estimated Values Over Time')
     ax1.set_xlabel('Time')
     ax1.set_ylabel('UCB Value')
     ax1.legend()
 
     # Tracer les valeurs UCB pour V2I
-    ax2.plot(times, hist_v2i[:, 0], label='Arm 0, Délai moyen (s)')
-    ax2.plot(times, hist_v2i[:, 1], label='Arm 1, Taux de perte (%)')
-    ax2.plot(times, hist_v2i[:, 2], label='Arm 2, Charge moyenne')
+    ax2.plot(times, history[:, 1], label='V2I')
     ax2.set_title('V2I UCB Estimated Values Over Time')
     ax2.set_xlabel('Time')
     ax2.set_ylabel('UCB Value')
@@ -124,11 +114,11 @@ def compare_protocols(df: pd.DataFrame):
     """
 
     # Exécutez l'évolution pour obtenir les meilleures valeurs
-    times, hist_v2v, hist_v2i = run_evolution(df)
+    times, history = run_evolution(df)
     
     # Meilleures valeurs finales
-    best_v2v = hist_v2v.max()
-    best_v2i = hist_v2i.max()
+    best_v2v = history[:, 0].max()
+    best_v2i = history[:, 1].max()
 
     # Affichage des résultats
     print(f"Meilleure valeur UCB V2V : {best_v2v:.3f}")
@@ -139,4 +129,3 @@ def compare_protocols(df: pd.DataFrame):
         print("Conclusion : V2I est meilleur.")
     else:
         print("Conclusion : ex æquo.")
-
