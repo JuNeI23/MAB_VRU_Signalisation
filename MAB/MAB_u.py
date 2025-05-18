@@ -1,14 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from simulation.simulation import main
 
-# Lecture unique et nettoyage du CSV
-DF = pd.read_csv('resultats.csv').replace('Ø', np.nan)
-DF = DF.dropna(subset=['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne'])
-DF[['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']] = DF[
-    ['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']
-].apply(pd.to_numeric)
 
 # Classe pour l'algorithme MAB epsilon-greedy
 class UCBMAB:
@@ -48,8 +41,6 @@ class UCBMAB:
         # moyenne incrémentale
         self.values[chosen_arm] = ((n - 1) / n) * value + (1 / n) * reward
 
-    def __str__(self):
-        return f"Counts: {self.counts}\nValues: {self.values}"
 
 
 def run_evolution(df: pd.DataFrame, n_arms: int = 3):
@@ -94,25 +85,30 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 3):
     return times, history_v2v, history_v2i
 
 # Fonction pour tracer l'évolution des valeurs UCB
-def plot_evolution():
+def plot_evolution(df: pd.DataFrame):
     """
     Trace l’évolution des valeurs estimées UCB pour V2V et V2I.
     """
-    df = DF
 
     times, hist_v2v, hist_v2i = run_evolution(df)
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
 
-    for arm in range(hist_v2v.shape[1]):
-        ax1.plot(times, hist_v2v[:, arm], label=f'Arm {arm}')
+    # Tracer les valeurs UCB pour V2V et V2I
+
+    # Tracer les valeurs UCB pour V2V
+    ax1.plot(times, hist_v2v[:, 0], label='Arm 0, Délai moyen (s)')
+    ax1.plot(times, hist_v2v[:, 1], label='Arm 1, Taux de perte (%)')
+    ax1.plot(times, hist_v2v[:, 2], label='Arm 2, Charge moyenne')
     ax1.set_title('V2V UCB Estimated Values Over Time')
     ax1.set_xlabel('Time')
     ax1.set_ylabel('UCB Value')
     ax1.legend()
 
-    for arm in range(hist_v2i.shape[1]):
-        ax2.plot(times, hist_v2i[:, arm], label=f'Arm {arm}')
+    # Tracer les valeurs UCB pour V2I
+    ax2.plot(times, hist_v2i[:, 0], label='Arm 0, Délai moyen (s)')
+    ax2.plot(times, hist_v2i[:, 1], label='Arm 1, Taux de perte (%)')
+    ax2.plot(times, hist_v2i[:, 2], label='Arm 2, Charge moyenne')
     ax2.set_title('V2I UCB Estimated Values Over Time')
     ax2.set_xlabel('Time')
     ax2.set_ylabel('UCB Value')
@@ -122,11 +118,11 @@ def plot_evolution():
     plt.show()
 
 
-def compare_protocols():
+def compare_protocols(df: pd.DataFrame):
     """
     Compare les meilleures valeurs UCB finales de V2V et V2I.
     """
-    df = DF
+
     # Exécutez l'évolution pour obtenir les meilleures valeurs
     times, hist_v2v, hist_v2i = run_evolution(df)
     
@@ -144,8 +140,3 @@ def compare_protocols():
     else:
         print("Conclusion : ex æquo.")
 
-
-if __name__ == "__main__":
-    main()
-    #plot_evolution()
-    compare_protocols()

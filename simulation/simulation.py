@@ -3,7 +3,8 @@ import pandas as pd
 import csv
 
 from simulation.models import User, Infrastructure, Node
-from simulation.protocols import Protocole, Metric
+from simulation.protocols import Protocole
+from simulation.metric import Metric
 
 def charger_usagers_depuis_csv(fichier_csv: str) -> List[Node]:
     print(f"[Étape] Chargement du fichier CSV : {fichier_csv}")
@@ -96,6 +97,7 @@ def simuler_communication(users: List[Node], protocole: Protocole, metric: Metri
 
 def main():
     print("[Étape] Démarrage de la simulation")
+    failed_times: List[float] = []
     users = charger_usagers_depuis_csv("sumoTrace_edge.csv")
     print(f"[Étape] {len(users)} usagers chargés")
     groups = regrouper_par_temps(users)
@@ -104,34 +106,60 @@ def main():
     protocole_v2v = Protocole("V2V", network_load=0.1, packet_loss_rate=0.1, transmission_time=0.1)
     protocole_v2i = Protocole("V2I", network_load=0.1, packet_loss_rate=0.05, transmission_time=0.5)
 
-    with open('resultats.csv', 'w', newline='') as csvfile:
-        print("[Étape] Écriture des résultats dans 'resultats.csv'")
+    with open('resultats_v2v.csv', 'w', newline='') as csvfile:
+        print("[Étape] Écriture des résultats dans 'resultats_v2v.csv'")
         writer = csv.writer(csvfile)
         writer.writerow(["Temps", "Protocole", "Délai moyen (s)", "Taux de perte (%)", "Charge moyenne"])
         for t in sorted(groups):
             batch = groups[t]
             if len(batch) <= 1:
-                writer.writerow([t, protocole_v2v.name, "N/A", "N/A", "N/A"])
-                writer.writerow([t, protocole_v2i.name, "N/A", "N/A", "N/A"])
+                failed_times.append(t)
                 continue
 
             mv2v = simuler_communication(batch, protocole_v2v, Metric(), "v2v")
             avg, loss, load = mv2v.get_metrics()
+
+            # Si la simulation échoue, on ajoute le temps à failed_times et on continue à la prochaine itération
+            if avg is None:
+                failed_times.append(t)
+                continue
+
+            # Écriture des résultats : toujours deux lignes, "N/A" pour protocole en échec
+            # Ligne V2V
             writer.writerow([
                 t,
                 protocole_v2v.name,
-                round(avg, 4) if avg is not None else "Ø",
-                round(loss * 100, 2) if loss is not None else "Ø",
-                round(load, 4) if load is not None else "Ø",
+                round(avg, 4) if avg is not None else "N/A",
+                round(loss * 100, 2) if loss is not None else "N/A",
+                round(load, 4) if load is not None else "N/A",
             ])
 
+    with open('resultats_V2I.csv', 'w', newline='') as csvfile:
+                
+        print("[Étape] Écriture des résultats dans 'resultats_V2I.csv'")
+        writer = csv.writer(csvfile)
+        writer.writerow(["Temps", "Protocole", "Délai moyen (s)", "Taux de perte (%)", "Charge moyenne"])
+        for t in sorted(groups):
+            batch = groups[t]
+            if len(batch) <= 1:
+                failed_times.append(t)
+                continue
+
+            # Simulation V2I
             mv2i = simuler_communication(batch, protocole_v2i, Metric(), "v2i")
-            avg2, loss2, load2 = mv2i.get_metrics()
+            avg, loss, load = mv2i.get_metrics()
+
+            # Si la simulation échoue, on ajoute le temps à failed_times et on continue à la prochaine itération
+            if avg is None:
+                failed_times.append(t)
+                continue
+            
+            # Écriture des résultats
             writer.writerow([
                 t,
                 protocole_v2i.name,
-                round(avg2, 4) if avg2 is not None else "Ø",
-                round(loss2 * 100, 2) if loss2 is not None else "Ø",
-                round(load2, 4) if load2 is not None else "Ø",
+                round(avg, 4) if avg is not None else "N/A",
+                round(loss * 100, 2) if loss is not None else "N/A",
+                round(load, 4) if load is not None else "N/A",
             ])
-    print("Simulation terminée")
+    print(f"[Résultat] Temps sans communications réussies : {failed_times}")

@@ -1,14 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from simulation.simulation import main
 
-# Lecture unique et nettoyage du CSV
-DF = pd.read_csv('resultats.csv').replace('Ø', np.nan)
-DF = DF.dropna(subset=['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne'])
-DF[['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']] = DF[
-    ['Délai moyen (s)', 'Taux de perte (%)', 'Charge moyenne']
-].apply(pd.to_numeric)
 
 # Classe pour l'algorithme MAB epsilon-greedy
 class EpsilonGreedyMAB:
@@ -49,9 +42,6 @@ class EpsilonGreedyMAB:
         value = self.values[chosen_arm]
         # Mise à jour incrémentale de la moyenne
         self.values[chosen_arm] = ((n - 1) / float(n)) * value + (1 / float(n)) * reward
-
-    def __str__(self):
-        return f"Counts: {self.counts}\nValues: {self.values}"
 
 # Centralized evolution function
 def run_evolution(df: pd.DataFrame, epsilon: float, n_arms: int = 3):
@@ -96,12 +86,10 @@ def run_evolution(df: pd.DataFrame, epsilon: float, n_arms: int = 3):
     return times, history_v2v, history_v2i
 
 # Fonction pour tracer l'évolution des valeurs ε-greedy
-def plot_evolution(epsilon=0.1):
+def plot_evolution(df: pd.DataFrame, epsilon=0.1):
     """
     Plot the evolution of the ε-greedy MAB estimated values over time.
     """
-    df = DF
-
     times, hist_v2v, hist_v2i = run_evolution(df, epsilon)
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
@@ -126,13 +114,11 @@ def plot_evolution(epsilon=0.1):
     plt.show()
 
 # Comparison function
-def compare_protocols(epsilon=0.1):
+def compare_protocols(df: pd.DataFrame, epsilon=0.1):
     """
     Compare the final estimated values of the V2V and V2I protocols
     and print which one is better.
     """
-    df = DF
-
     # Run evolution to get histories
     times, hist_v2v, hist_v2i = run_evolution(df, epsilon)
 
@@ -150,9 +136,3 @@ def compare_protocols(epsilon=0.1):
     else:
         print("Conclusion : les deux protocoles sont équivalents.")
 
-
-if __name__ == "__main__":
-    main()
-    # Exécutez les fonctions de traçage et de comparaison
-    plot_evolution()
-    compare_protocols()
