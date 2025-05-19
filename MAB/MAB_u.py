@@ -1,131 +1,177 @@
+"""
+Upper Confidence Bound (UCB) Multi-Armed Bandit implementation.
+
+This module provides an implementation of the UCB1 algorithm for the
+Multi-Armed Bandit problem, using confidence bounds for exploration.
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from typing import Tuple, List, Union, Optional
+import logging
 
+from .base_mab import BaseMAB
 
-# Classe pour l'algorithme MAB epsilon-greedy
-class UCBMAB:
+logger = logging.getLogger(__name__)
+
+class UCBMAB(BaseMAB):
+    """
+    UCB1 MAB implementation with improved confidence bounds.
+    
+    This implementation uses the UCB1 algorithm to balance exploration
+    and exploitation based on uncertainty in value estimates.
+    """
+    
     def __init__(self, n_arms: int):
         """
-        Initialise un MAB UCB à n_arms.
+        Initialize UCB MAB.
+        
+        Args:
+            n_arms: Number of arms (actions)
+            
+        The UCB1 algorithm requires no additional parameters beyond
+        the number of arms, as it automatically balances exploration
+        and exploitation based on uncertainty.
         """
-        self.n_arms = n_arms
-        self.counts = [0] * n_arms        # nombre de fois que chaque bras a été joué
-        self.values = [0.0] * n_arms      # moyenne empirique des récompenses
-        self.total_counts = 0             # nombre total de tours joués
-
+        super().__init__(n_arms)
+        self.total_counts = 0
+        logger.info(f"Initialized UCB MAB with {n_arms} arms")
+        
     def select_arm(self) -> int:
         """
-        Sélection selon la rule UCB1 :
+        Select an arm using UCB1 strategy.
+        
+        First plays each arm once, then selects the arm maximizing
+        UCB = empirical_mean + sqrt(2 * ln(total_plays) / arm_plays)
+        
+        Returns:
+            Index of the selected arm
         """
-        # Jouer chaque bras au moins une fois
+        # Play each arm once initially
         for arm in range(self.n_arms):
             if self.counts[arm] == 0:
+                logger.debug(f"Initial play of arm {arm}")
                 return arm
-
-        # Calculer l’indice UCB pour chaque bras
+                
+        # Calculate UCB values for each arm
         ucb_values = [
-            self.values[arm] + np.sqrt(2 * np.log(self.total_counts) / self.counts[arm])
+            self.values[arm] + np.sqrt(
+                2 * np.log(self.total_counts) / self.counts[arm]
+            )
             for arm in range(self.n_arms)
         ]
-        return int(np.argmax(ucb_values))
-
-    def update(self, chosen_arm: int, reward: float):
+        
+        selected_arm = int(np.argmax(ucb_values))
+        logger.debug(
+            f"Selected arm {selected_arm} with "
+            f"value={self.values[selected_arm]:.3f}, "
+            f"UCB={ucb_values[selected_arm]:.3f}"
+        )
+        return selected_arm
+        
+    def update(self, chosen_arm: int, reward: float) -> None:
         """
-        Met à jour la moyenne empirique du bras choisi.
+        Update value estimate and counts for the chosen arm.
+        
+        Args:
+            chosen_arm: Index of the arm that was played
+            reward: Reward received from playing the arm
+            
+        Raises:
+            ValueError: If chosen_arm is invalid
         """
+        super().update(chosen_arm, reward)
         self.total_counts += 1
-        self.counts[chosen_arm] += 1
-        n = self.counts[chosen_arm]
-        value = self.values[chosen_arm]
-        # moyenne incrémentale
-        self.values[chosen_arm] = ((n - 1) / n) * value + (1 / n) * reward
 
-
-
-def run_evolution(df: pd.DataFrame, n_arms: int = 2):
+def run_evolution(
+    df: pd.DataFrame,
+    n_arms: int = 2
+) -> Tuple[List[Union[int, float]], np.ndarray]:
     """
-    Identique à votre version ε-greedy, mais avec UCB.
-    Retourne (times, history).
+    Run UCB evolution on simulation data.
+    
+    Args:
+        df: DataFrame with simulation results
+        n_arms: Number of arms (default: 2 for V2V/V2I)
+        
+    Returns:
+        Tuple of:
+        - List of simulation times
+        - History of estimated values (shape: n_times x n_arms)
     """
+    logger.info("Starting UCB evolution")
+    
     times = sorted(df['Temps'].unique())
-    # Préallocation des historiques
     n_times = len(times)
     mab = UCBMAB(n_arms)
     history = np.zeros((n_times, n_arms))
-
+    
     for idx, t in enumerate(times):
-        row_v2v = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')]
-        row_v2i = df[(df['Temps'] == t) & (df['Protocole'] == 'V2I')]
-        if row_v2v.empty or row_v2i.empty:
-            continue
-        v2v = row_v2v.iloc[0]
-        v2i = row_v2i.iloc[0]
-
-        # Calcul de la récompense scalaire pondérée (négative car on veut minimiser)
-        reward_v2v = - (0.5 * v2v['Délai moyen (s)'] + 0.3 * v2v['Taux de perte (%)'] + 0.2 * v2v['Charge moyenne'])
-        reward_v2i = - (0.5 * v2i['Délai moyen (s)'] + 0.3 * v2i['Taux de perte (%)'] + 0.2 * v2i['Charge moyenne'])
-
-        # Select an arm (0=V2V, 1=V2I) and update that arm
+        # Get data for current timestep
+        v2v_data = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')].iloc[0]
+        v2i_data = df[(df['Temps'] == t) & (df['Protocole'] == 'V2I')].iloc[0]
+        
+        # Calculate rewards with weighted metrics
+        reward_v2v = -(
+            0.5 * v2v_data['Délai moyen (s)'] +
+            0.3 * v2v_data['Taux de perte (%)'] +
+            0.2 * v2v_data['Charge moyenne']
+        )
+        reward_v2i = -(
+            0.5 * v2i_data['Délai moyen (s)'] +
+            0.3 * v2i_data['Taux de perte (%)'] +
+            0.2 * v2i_data['Charge moyenne']
+        )
+        
+        # Select and update
         arm = mab.select_arm()
         if arm == 0:
             mab.update(0, reward_v2v)
         else:
             mab.update(1, reward_v2i)
-
-        # Record estimated values for both arms
-        history[idx, :] = mab.values
-
+            
+        # Record history
+        history[idx] = mab.values
+        
+        if (idx + 1) % 10 == 0:
+            logger.debug(
+                f"Step {idx+1}/{n_times}: "
+                f"V2V={mab.values[0]:.3f}, V2I={mab.values[1]:.3f}"
+            )
+            
+    logger.info("UCB evolution completed")
     return times, history
 
-# Fonction pour tracer l'évolution des valeurs UCB
-def plot_evolution(df: pd.DataFrame):
-    """
-    Trace l’évolution des valeurs estimées UCB pour V2V et V2I.
-    """
-
-    times, history = run_evolution(df)
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
-
-    # Tracer les valeurs UCB pour V2V et V2I
-
-    # Tracer les valeurs UCB pour V2V
-    ax1.plot(times, history[:, 0], label='V2V')
-    ax1.set_title('V2V UCB Estimated Values Over Time')
-    ax1.set_xlabel('Time')
-    ax1.set_ylabel('UCB Value')
-    ax1.legend()
-
-    # Tracer les valeurs UCB pour V2I
-    ax2.plot(times, history[:, 1], label='V2I')
-    ax2.set_title('V2I UCB Estimated Values Over Time')
-    ax2.set_xlabel('Time')
-    ax2.set_ylabel('UCB Value')
-    ax2.legend()
-
-    plt.tight_layout()
-    plt.show()
-
-
-def compare_protocols(df: pd.DataFrame):
-    """
-    Compare les meilleures valeurs UCB finales de V2V et V2I.
-    """
-
-    # Exécutez l'évolution pour obtenir les meilleures valeurs
+def plot_evolution(df: pd.DataFrame) -> None:
+    """Plot evolution of estimated values."""
     times, history = run_evolution(df)
     
-    # Meilleures valeurs finales
-    best_v2v = history[:, 0].max()
-    best_v2i = history[:, 1].max()
-
-    # Affichage des résultats
-    print(f"Meilleure valeur UCB V2V : {best_v2v:.3f}")
-    print(f"Meilleure valeur UCB V2I : {best_v2i:.3f}")
-    if best_v2v > best_v2i:
-        print("Conclusion : V2V l’emporte.")
-    elif best_v2i > best_v2v:
-        print("Conclusion : V2I est meilleur.")
+    plt.figure(figsize=(10, 6))
+    plt.plot(times, history[:, 0], label='V2V', color='blue')
+    plt.plot(times, history[:, 1], label='V2I', color='red')
+    plt.xlabel('Time')
+    plt.ylabel('Estimated Value')
+    plt.title('UCB Evolution')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('Figure_2.png')
+    plt.close()
+    
+def compare_protocols(df: pd.DataFrame) -> None:
+    """Compare final protocol performance."""
+    _, history = run_evolution(df)
+    
+    final_v2v = history[-1, 0]
+    final_v2i = history[-1, 1]
+    
+    logger.info("\nFinal Protocol Comparison:")
+    logger.info(f"V2V: {final_v2v:.3f}")
+    logger.info(f"V2I: {final_v2i:.3f}")
+    
+    if final_v2v > final_v2i:
+        logger.info("V2V performs better")
+    elif final_v2i > final_v2v:
+        logger.info("V2I performs better")
     else:
-        print("Conclusion : ex æquo.")
+        logger.info("Both protocols perform equally")
