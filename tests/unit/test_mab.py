@@ -3,10 +3,10 @@ Unit tests for MAB algorithms implementations.
 """
 import pytest
 import numpy as np
-from MAB.base_mab import BaseMAB
-from MAB.MAB_e import EpsilonGreedyMAB
-from MAB.MAB_u import UCBMAB
-from MAB.MAB_Ts import ThompsonSampling
+from mab_vru.MAB.base_mab import BaseMAB
+from mab_vru.MAB.MAB_e import EpsilonGreedyMAB
+from mab_vru.MAB.MAB_u import UCBMAB
+from mab_vru.MAB.MAB_Ts import ThompsonSamplingMAB
 
 def test_epsilon_greedy_initialization():
     """Test epsilon-greedy algorithm initialization."""
@@ -35,7 +35,7 @@ def test_ucb_initialization():
 def test_thompson_sampling_initialization():
     """Test Thompson Sampling algorithm initialization."""
     n_arms = 2
-    mab = ThompsonSampling(n_arms=n_arms)
+    mab = ThompsonSamplingMAB(n_arms=n_arms)
     
     assert mab.n_arms == n_arms
     assert len(mab.counts) == n_arms
@@ -93,3 +93,56 @@ def test_exploration_exploitation_balance():
     # 25% selections for arm 1 (25% exploration)
     assert 650 < arm0_count < 850  # Roughly 75%
     assert 150 < arm1_count < 350  # Roughly 25%
+
+def test_epsilon_greedy_exploitation():
+    """Test epsilon-greedy exploitation phase."""
+    np.random.seed(42)  # For reproducibility
+    mab = EpsilonGreedyMAB(n_arms=3, epsilon=0.0)  # Pure exploitation
+    
+    # Simulate some history
+    mab.counts = [10, 10, 10]
+    mab.values = [0.8, 0.5, 0.3]
+    
+    # Best arm should always be chosen in pure exploitation
+    chosen_arms = [mab.select_arm() for _ in range(10)]
+    assert all(arm == 0 for arm in chosen_arms)
+
+def test_epsilon_greedy_exploration():
+    """Test epsilon-greedy exploration phase."""
+    np.random.seed(42)
+    mab = EpsilonGreedyMAB(n_arms=3, epsilon=1.0)  # Pure exploration
+    
+    # Run multiple selections to verify random exploration
+    chosen_arms = [mab.select_arm() for _ in range(100)]
+    unique_arms = set(chosen_arms)
+    assert len(unique_arms) == 3  # All arms should be chosen at least once
+
+def test_ucb_confidence_bounds():
+    """Test UCB confidence bound calculation."""
+    mab = UCBMAB(n_arms=2)
+    
+    # Simulate some history
+    mab.counts = [5, 10]
+    mab.values = [0.6, 0.5]
+    
+    # The less explored arm should have higher confidence bound
+    confidence_bounds = [mab._get_ucb_value(arm) for arm in range(2)]
+    assert confidence_bounds[0] > confidence_bounds[1]
+
+def test_thompson_sampling_posterior():
+    """Test Thompson Sampling posterior sampling."""
+    np.random.seed(42)
+    mab = ThompsonSamplingMAB(n_arms=2)
+    
+    # Simulate successful pulls for arm 0
+    for _ in range(10):
+        mab.update(0, 1.0)
+    
+    # Simulate failed pulls for arm 1
+    for _ in range(10):
+        mab.update(1, 0.0)
+    
+    # Arm 0 should be chosen more frequently
+    chosen_arms = [mab.select_arm() for _ in range(100)]
+    arm_0_count = sum(1 for arm in chosen_arms if arm == 0)
+    assert arm_0_count > 70  # Arm 0 should be chosen significantly more often

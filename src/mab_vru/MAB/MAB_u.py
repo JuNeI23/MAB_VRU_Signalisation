@@ -158,20 +158,46 @@ def plot_evolution(df: pd.DataFrame) -> None:
     plt.savefig('Figure_2.png')
     plt.close()
     
-def compare_protocols(df: pd.DataFrame) -> None:
-    """Compare final protocol performance."""
-    _, history = run_evolution(df)
+def compare_protocols(df: pd.DataFrame) -> Tuple[str, float]:
+    """
+    Compare V2V and V2I protocols using UCB strategy.
     
-    final_v2v = history[-1, 0]
-    final_v2i = history[-1, 1]
+    Args:
+        df: DataFrame with simulation results
+        
+    Returns:
+        Tuple of (best_protocol, best_value)
+    """
+    logger.info("Starting UCB protocol comparison")
     
-    logger.info("\nFinal Protocol Comparison:")
-    logger.info(f"V2V: {final_v2v:.3f}")
-    logger.info(f"V2I: {final_v2i:.3f}")
+    # Initialize MABs for each protocol
+    protocol_mabs = {
+        'V2V': UCBMAB(n_arms=3),
+        'V2I': UCBMAB(n_arms=3)
+    }
     
-    if final_v2v > final_v2i:
-        logger.info("V2V performs better")
-    elif final_v2i > final_v2v:
-        logger.info("V2I performs better")
-    else:
-        logger.info("Both protocols perform equally")
+    # Update MABs with simulation data
+    metrics = ['Average Delay (s)', 'Loss Rate (%)', 'Average Load']
+    
+    for protocol in protocol_mabs:
+        protocol_data = df[df['Protocol'] == protocol].sort_values('Time')
+        for arm, metric in enumerate(metrics):
+            values = protocol_data[metric].values
+            for value in values:
+                # Normalize reward to [0, 1] - lower is better
+                reward = 1 - (value / df[metric].max())
+                protocol_mabs[protocol].update(arm, reward)
+    
+    # Get final values
+    v2v_value = max(protocol_mabs['V2V'].values)
+    v2i_value = max(protocol_mabs['V2I'].values)
+    
+    # Determine best protocol
+    best_protocol = 'V2V' if v2v_value > v2i_value else 'V2I'
+    best_value = max(v2v_value, v2i_value)
+    
+    logger.info(f"V2V final UCB value: {v2v_value:.3f}")
+    logger.info(f"V2I final UCB value: {v2i_value:.3f}")
+    logger.info(f"Best protocol: {best_protocol}")
+    
+    return best_protocol, best_value

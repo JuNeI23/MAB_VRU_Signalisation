@@ -186,29 +186,46 @@ def plot_evolution(df: pd.DataFrame) -> None:
     plt.savefig('Figure_3.png')
     plt.close()
     
-def compare_protocols(df: pd.DataFrame) -> None:
-    """Compare final protocol performance with uncertainty."""
-    _, history = run_evolution(df)
-    mab = GaussianThompsonSampling(2)
+def compare_protocols(df: pd.DataFrame) -> Tuple[str, float]:
+    """
+    Compare V2V and V2I protocols using Thompson Sampling.
     
-    final_v2v = history[-1, 0]
-    final_v2i = history[-1, 1]
+    Args:
+        df: DataFrame with simulation results
+        
+    Returns:
+        Tuple of (best_protocol, best_value)
+    """
+    logger.info("Starting Thompson Sampling protocol comparison")
     
-    logger.info("\nFinal Protocol Comparison:")
-    logger.info(
-        f"V2V: {final_v2v:.3f}±{mab.stds[0]:.3f}"
-    )
-    logger.info(
-        f"V2I: {final_v2i:.3f}±{mab.stds[1]:.3f}"
-    )
+    # Initialize MABs for each protocol
+    protocol_mabs = {
+        'V2V': GaussianThompsonSampling(n_arms=3),
+        'V2I': GaussianThompsonSampling(n_arms=3)
+    }
     
-    # Use confidence intervals for comparison
-    diff = final_v2v - final_v2i
-    diff_std = np.sqrt(mab.stds[0]**2 + mab.stds[1]**2)
+    # Update MABs with simulation data
+    metrics = ['Average Delay (s)', 'Loss Rate (%)', 'Average Load']
     
-    if diff > 2 * diff_std:
-        logger.info("V2V performs significantly better")
-    elif diff < -2 * diff_std:
-        logger.info("V2I performs significantly better")
-    else:
-        logger.info("No significant difference between protocols")
+    for protocol in protocol_mabs:
+        protocol_data = df[df['Protocol'] == protocol].sort_values('Time')
+        for arm, metric in enumerate(metrics):
+            values = protocol_data[metric].values
+            for value in values:
+                # Normalize reward to [0, 1] - lower is better
+                reward = 1 - (value / df[metric].max())
+                protocol_mabs[protocol].update(arm, reward)
+    
+    # Get final values (using mean estimates)
+    v2v_value = max(protocol_mabs['V2V'].means)
+    v2i_value = max(protocol_mabs['V2I'].means)
+    
+    # Determine best protocol
+    best_protocol = 'V2V' if v2v_value > v2i_value else 'V2I'
+    best_value = max(v2v_value, v2i_value)
+    
+    logger.info(f"V2V final mean value: {v2v_value:.3f}")
+    logger.info(f"V2I final mean value: {v2i_value:.3f}")
+    logger.info(f"Best protocol: {best_protocol}")
+    
+    return best_protocol, best_value

@@ -2,7 +2,7 @@
 Unit tests for VRU simulation models.
 """
 import pytest
-from simulation.models import Node, User, Infrastructure, Message
+from mab_vru.simulation.models import Node, User, Infrastructure, Message
 from simulation.protocols import Protocole
 
 def test_user_initialization():

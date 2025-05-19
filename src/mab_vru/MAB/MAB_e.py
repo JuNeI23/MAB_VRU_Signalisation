@@ -87,7 +87,7 @@ def run_evolution(
     """
     logger.info(f"Starting ε-greedy evolution (ε={epsilon:.2f})")
     
-    times = sorted(df['Temps'].unique())
+    times = sorted(df['Time'].unique())
     n_times = len(times)
     eg = EpsilonGreedyMAB(n_arms, epsilon)
     history = np.zeros((n_times, n_arms))
@@ -95,19 +95,19 @@ def run_evolution(
     with tqdm(total=n_times, desc="ε-greedy Evolution") as pbar:
         for idx, t in enumerate(times):
             # Get data for current timestep
-            v2v_data = df[(df['Temps'] == t) & (df['Protocole'] == 'V2V')].iloc[0]
-            v2i_data = df[(df['Temps'] == t) & (df['Protocole'] == 'V2I')].iloc[0]
+            v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
+            v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
             
             # Calculate rewards with weighted metrics
             reward_v2v = -(
-                0.5 * v2v_data['Délai moyen (s)'] +
-                0.3 * v2v_data['Taux de perte (%)'] +
-                0.2 * v2v_data['Charge moyenne']
+                0.5 * v2v_data['Average Delay (s)'] +
+                0.3 * v2v_data['Loss Rate (%)'] +
+                0.2 * v2v_data['Average Load']
             )
             reward_v2i = -(
-                0.5 * v2i_data['Délai moyen (s)'] +
-                0.3 * v2i_data['Taux de perte (%)'] +
-                0.2 * v2i_data['Charge moyenne']
+                0.5 * v2i_data['Average Delay (s)'] +
+                0.3 * v2i_data['Loss Rate (%)'] +
+                0.2 * v2i_data['Average Load']
             )
             
             # Select and update
@@ -146,20 +146,47 @@ def plot_evolution(df: pd.DataFrame, epsilon: float = 0.1) -> None:
     plt.savefig('Figure_1.png')
     plt.close()
     
-def compare_protocols(df: pd.DataFrame, epsilon: float = 0.1) -> None:
-    """Compare final protocol performance."""
-    _, history = run_evolution(df, epsilon)
+def compare_protocols(df: pd.DataFrame, epsilon: float = 0.1) -> Tuple[str, float]:
+    """
+    Compare V2V and V2I protocols using ε-greedy strategy.
     
-    final_v2v = history[-1, 0]
-    final_v2i = history[-1, 1]
+    Args:
+        df: DataFrame with simulation results
+        epsilon: Exploration probability (default: 0.1)
+        
+    Returns:
+        Tuple of (best_protocol, best_value)
+    """
+    logger.info(f"Starting ε-greedy evolution (ε={epsilon:.2f})")
     
-    logger.info("\nFinal Protocol Comparison:")
-    logger.info(f"V2V: {final_v2v:.3f}")
-    logger.info(f"V2I: {final_v2i:.3f}")
+    # Initialize MABs for each protocol
+    protocol_mabs = {
+        'V2V': EpsilonGreedyMAB(n_arms=3, epsilon=epsilon),
+        'V2I': EpsilonGreedyMAB(n_arms=3, epsilon=epsilon)
+    }
     
-    if final_v2v > final_v2i:
-        logger.info("V2V performs better")
-    elif final_v2i > final_v2v:
-        logger.info("V2I performs better")
-    else:
-        logger.info("Both protocols perform equally")
+    # Update MABs with simulation data
+    metrics = ['Average Delay (s)', 'Loss Rate (%)', 'Average Load']
+    
+    for protocol in protocol_mabs:
+        protocol_data = df[df['Protocol'] == protocol].sort_values('Time')
+        for arm, metric in enumerate(metrics):
+            values = protocol_data[metric].values
+            for value in values:
+                # Normalize reward to [0, 1] - lower is better
+                reward = 1 - (value / df[metric].max())
+                protocol_mabs[protocol].update(arm, reward)
+    
+    # Get final values
+    v2v_value = max(protocol_mabs['V2V'].values)
+    v2i_value = max(protocol_mabs['V2I'].values)
+    
+    # Determine best protocol
+    best_protocol = 'V2V' if v2v_value > v2i_value else 'V2I'
+    best_value = max(v2v_value, v2i_value)
+    
+    logger.info(f"V2V final value: {v2v_value:.3f}")
+    logger.info(f"V2I final value: {v2i_value:.3f}")
+    logger.info(f"Best protocol: {best_protocol}")
+    
+    return best_protocol, best_value
