@@ -130,12 +130,13 @@ def compare_protocols(df: pd.DataFrame, save_path: Optional[Path] = None) -> Tup
         v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
         v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
         
+        # Safely get metric values with inf/nan handling
         def safe_get_metric(data, metric):
             val = data[metric]
             if np.isinf(val) or np.isnan(val):
-                return 1.0
+                return 1.0  # Penalize inf/nan values
             return val
-            
+        
         # Get metrics with safety checks
         v2v_delay = safe_get_metric(v2v_data, 'Average Delay (s)')
         v2v_loss = safe_get_metric(v2v_data, 'Loss Rate (%)')
@@ -145,21 +146,21 @@ def compare_protocols(df: pd.DataFrame, save_path: Optional[Path] = None) -> Tup
         v2i_loss = safe_get_metric(v2i_data, 'Loss Rate (%)')
         v2i_load = safe_get_metric(v2i_data, 'Average Load')
         
-        # UCB emphasizes minimizing packet loss more
+        # Normalize metrics to [0,1] range (lower is better)
         max_delay = max(v2v_delay, v2i_delay)
         max_loss = max(v2v_loss, v2i_loss)
         max_load = max(v2v_load, v2i_load)
         
-        # Different weights: 20% delay, 60% loss, 20% load
+        # Prevent divide by zero
         v2v_score = (
-            0.2 * (v2v_delay / max_delay if max_delay > 0 else 0.0) +
-            0.6 * (v2v_loss / max_loss if max_loss > 0 else 0.0) +
+            0.5 * (v2v_delay / max_delay if max_delay > 0 else 0.0) +
+            0.3 * (v2v_loss / max_loss if max_loss > 0 else 0.0) +
             0.2 * (v2v_load / max_load if max_load > 0 else 0.0)
         )
         
         v2i_score = (
-            0.2 * (v2i_delay / max_delay if max_delay > 0 else 0.0) +
-            0.6 * (v2i_loss / max_loss if max_loss > 0 else 0.0) +
+            0.5 * (v2i_delay / max_delay if max_delay > 0 else 0.0) +
+            0.3 * (v2i_loss / max_loss if max_loss > 0 else 0.0) +
             0.2 * (v2i_load / max_load if max_load > 0 else 0.0)
         )
         
@@ -172,7 +173,7 @@ def compare_protocols(df: pd.DataFrame, save_path: Optional[Path] = None) -> Tup
         mab.update(1, v2i_reward)
     
     # Determine best protocol based on final values
-    v2v_value = mab.values[0] 
+    v2v_value = mab.values[0]
     v2i_value = mab.values[1]
     best_protocol = 'V2V' if v2v_value > v2i_value else 'V2I'
     best_value = max(v2v_value, v2i_value)

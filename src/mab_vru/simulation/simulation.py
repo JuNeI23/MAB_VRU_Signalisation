@@ -53,33 +53,80 @@ def load_users(trace_file: str, v2v_protocol: Protocol) -> List[User]:
         ValueError: If required columns are missing
         FileNotFoundError: If trace file doesn't exist
     """
-    required_columns = {'id', 'x', 'y', 'angle', 'speed', 'pos', 'lane', 'time', 'type'}
     users = []
     
     try:
         df = pd.read_csv(trace_file)
-        missing_cols = required_columns - set(df.columns)
-        if missing_cols:
-            raise ValueError(f"Missing required columns: {missing_cols}")
         
-        for _, row in df.iterrows():
-            try:
-                users.append(User(
-                    usager_id=str(row['id']),
-                    x=float(row['x']),
-                    y=float(row['y']),
-                    angle=float(row['angle']),
-                    speed=float(row['speed']),
-                    position=float(row['pos']),
-                    lane=str(row['lane']),
-                    time=float(row['time']),
-                    usager_type=str(row['type']),
-                    categorie='vehicule',
-                    protocol=v2v_protocol
-                ))
-            except (ValueError, KeyError) as e:
-                logger.warning(f"Skipping invalid user data: {e}")
-                continue
+        # Process vehicles
+        vehicle_prefix = "vehicle/0/_"  # Start with first vehicle
+        vehicle_cols = {
+            'id': f'{vehicle_prefix}id',
+            'x': f'{vehicle_prefix}x',
+            'y': f'{vehicle_prefix}y',
+            'angle': f'{vehicle_prefix}angle',
+            'speed': f'{vehicle_prefix}speed',
+            'pos': f'{vehicle_prefix}pos',
+            'lane': f'{vehicle_prefix}lane',
+            'type': f'{vehicle_prefix}type'
+        }
+        
+        # Process pedestrians
+        person_prefix = "person/_"
+        person_cols = {
+            'id': f'{person_prefix}id',
+            'x': f'{person_prefix}x',
+            'y': f'{person_prefix}y',
+            'angle': f'{person_prefix}angle',
+            'speed': f'{person_prefix}speed',
+            'pos': f'{person_prefix}pos',
+            'type': f'{person_prefix}type'
+        }
+        
+        # Add time column
+        df['time'] = df['_time']
+        
+        # Process vehicles first
+        if all(col in df.columns for col in vehicle_cols.values()):
+            for _, row in df.iterrows():
+                try:
+                    users.append(User(
+                        usager_id=str(row[vehicle_cols['id']]),
+                        x=float(row[vehicle_cols['x']]),
+                        y=float(row[vehicle_cols['y']]),
+                        angle=float(row[vehicle_cols['angle']]),
+                        speed=float(row[vehicle_cols['speed']]),
+                        position=float(row[vehicle_cols['pos']]),
+                        lane=str(row[vehicle_cols['lane']]),
+                        time=float(row['time']),
+                        usager_type=str(row[vehicle_cols['type']]),
+                        categorie='vehicule',
+                        protocol=v2v_protocol
+                    ))
+                except (ValueError, KeyError) as e:
+                    logger.warning(f"Skipping invalid vehicle data: {e}")
+                    continue
+        
+        # Then process pedestrians
+        if all(col in df.columns for col in person_cols.values()):
+            for _, row in df.iterrows():
+                try:
+                    users.append(User(
+                        usager_id=str(row[person_cols['id']]),
+                        x=float(row[person_cols['x']]),
+                        y=float(row[person_cols['y']]),
+                        angle=float(row[person_cols['angle']]),
+                        speed=float(row[person_cols['speed']]),
+                        position=float(row[person_cols['pos']]),
+                        lane='pedestrian',  # Default lane for pedestrians
+                        time=float(row['time']),
+                        usager_type=str(row[person_cols['type']]),
+                        categorie='pieton',
+                        protocol=v2v_protocol
+                    ))
+                except (ValueError, KeyError) as e:
+                    logger.warning(f"Skipping invalid pedestrian data: {e}")
+                    continue
                 
         if not users:
             logger.warning("No valid users loaded from trace file")
@@ -91,6 +138,66 @@ def load_users(trace_file: str, v2v_protocol: Protocol) -> List[User]:
         raise
     except Exception as e:
         logger.error(f"Error loading trace file: {e}")
+        raise
+
+def load_infrastructure(trace_file: str, v2i_protocol: Protocol) -> List[Infrastructure]:
+    """Load infrastructure nodes from SUMO trace file.
+    
+    Args:
+        trace_file: Path to the SUMO trace CSV file
+        v2i_protocol: Protocol to use for V2I communication
+        
+    Returns:
+        List of Infrastructure objects
+    """
+    infras = []
+    
+    try:
+        df = pd.read_csv(trace_file)
+        
+        # Process infrastructure (containers with type 'infra')
+        container_prefix = "container/_"
+        container_cols = {
+            'id': f'{container_prefix}id',
+            'x': f'{container_prefix}x',
+            'y': f'{container_prefix}y',
+            'type': f'{container_prefix}type',
+            'edge': f'{container_prefix}edge'
+        }
+        
+        # Filter for infrastructure nodes
+        infra_data = df[df[container_cols['type']] == 'infra'].drop_duplicates(subset=[container_cols['id']])
+        
+        for _, row in infra_data.iterrows():
+            try:
+                infras.append(Infrastructure(
+                    id=str(row[container_cols['id']]),
+                    protocol=v2i_protocol,
+                    x=float(row[container_cols['x']]),
+                    y=float(row[container_cols['y']]),
+                    processing_capacity=100,  # Default capacity
+                    time=0.0  # Infrastructure is always available
+                ))
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Skipping invalid infrastructure data: {e}")
+                continue
+        
+        if not infras:
+            logger.warning("No infrastructure nodes found in trace file")
+            # Add default infrastructure at origin
+            infras.append(Infrastructure(
+                "infra_default",
+                v2i_protocol,
+                x=0.0,
+                y=0.0,
+                processing_capacity=100.0,
+                time=0.0
+            ))
+            
+        return infras
+        
+    except Exception as e:
+        logger.error(f"Error loading infrastructure data: {e}")
         raise
 
 def run_timestep(users: List[User], infras: List[Infrastructure], time: float) -> Dict:
@@ -145,9 +252,8 @@ def main(config: Optional[SimulationConfig] = None) -> bool:
             logger.error("No users loaded")
             return False
         
-        infras = [
-            Infrastructure("infra_1", v2i_protocol, x=0, y=0, processing_capacity=100, time=0)
-        ]
+        # Load infrastructure
+        infras = load_infrastructure(config.trace_file, v2i_protocol)
         
         # Run simulation
         results = []

@@ -29,10 +29,19 @@ def load_data(result_path: str = 'resultats.csv') -> pd.DataFrame:
     df = df.replace({'N/A': np.nan}).dropna()
     
     return df
+
+def ensure_plot_dir():
+    """Ensure plots directory exists."""
+    plot_dir = Path('plots')
+    plot_dir.mkdir(exist_ok=True)
+    return plot_dir
    
 def simulate_and_analyze() -> bool:
     """Run simulation and analyze protocols."""
     try:
+        # Create plots directory
+        plot_dir = ensure_plot_dir()
+        
         # Run simulation
         logging.info("Starting simulation...")
         if not run_simulation():
@@ -43,16 +52,19 @@ def simulate_and_analyze() -> bool:
         if df.empty:
             return False
         
-        # Run all MAB analyses
+        # Run all MAB analyses with plot paths
+        plot_dir = ensure_plot_dir()
+        
         logging.info("\nAnalyzing with Epsilon-Greedy:")
-        epsilon_greedy_compare(df)
+        epsilon_greedy_compare(df, save_path=plot_dir / "epsilon_greedy_evolution.png")
         
         logging.info("\nAnalyzing with UCB:")
-        ucb_compare(df)
+        ucb_compare(df, save_path=plot_dir / "ucb_evolution.png")
         
         logging.info("\nAnalyzing with Thompson Sampling:")
-        thompson_compare(df)
+        thompson_compare(df, save_path=plot_dir / "thompson_evolution.png")
         
+        logging.info(f"\nPlots saved in {plot_dir}/")
         return True
         
     except Exception as e:
