@@ -36,10 +36,14 @@ class Metric:
     
     @property
     def average_delay(self) -> float:
-        """Calculate average delay for successful transmissions."""
-        if self.message_count - self.failed_count <= 0:
-            return float('inf')
-        return self.total_delay / (self.message_count - self.failed_count)
+        """Calculate average delay for successful transmissions.
+        Returns:
+            float: Average delay for successful transmissions, or 0.0 if no successful transmissions
+        """
+        successful_messages = self.message_count - self.failed_count
+        if successful_messages <= 0:
+            return 0.0  # Return 0 instead of inf when no successful transmissions
+        return self.total_delay / successful_messages
     
     @property
     def loss_rate(self) -> float:

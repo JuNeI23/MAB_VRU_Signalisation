@@ -30,8 +30,9 @@ class Protocol:
         """
         Calculate reward based on multiple factors:
         - Success/failure of transmission
-        - Distance relative to range
+        - Distance relative to range (normalized by protocol type)
         - Network delay
+        - Reachability (based on whether distance is within range)
         
         Returns:
             float: Reward value between 0 and 1
@@ -39,8 +40,13 @@ class Protocol:
         if not success:
             return 0.0
             
-        # Distance factor: 1 when distance is 0, decreasing as distance approaches range
-        distance_factor = max(0, 1 - (distance / range_))
+        # Distance factor: Normalized differently for V2V and V2I due to their different scales
+        if self.name == "V2V":
+            # For V2V, prefer shorter distances (0-3m is optimal)
+            distance_factor = max(0, 1 - (distance / 3.0))
+        else:  # V2I
+            # For V2I, distances up to 100m are acceptable
+            distance_factor = max(0, 1 - (distance / 100.0))
         
         # Delay factor: 1 when delay is minimal, decreasing as delay increases
         delay_factor = 1 / (1 + delay)  # Uses a decay function
@@ -48,11 +54,18 @@ class Protocol:
         # Network load factor: 1 when load is low, decreasing as load increases
         load_factor = 1 - self.network_load
         
+        # Reachability factor: Binary reward for being within range
+        reachability_factor = 1.0 if distance <= range_ else 0.0
+        
         # Combine factors with weights
+        # - Increased weight for reachability as it's critical
+        # - Reduced weight for raw distance as it's now normalized by protocol
+        # - Maintained weights for delay and load as they remain important
         reward = (
-            0.4 * distance_factor +  # Distance is important for reliability
-            0.4 * delay_factor +     # Delay is crucial for real-time communication
-            0.2 * load_factor        # Network load affects scalability
+            0.35 * reachability_factor +  # Reachability is critical
+            0.25 * distance_factor +      # Distance affects reliability
+            0.25 * delay_factor +         # Delay is important for real-time communication
+            0.15 * load_factor            # Network load affects scalability
         )
         
         return reward
