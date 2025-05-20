@@ -18,22 +18,29 @@ class UCBMAB(BaseMAB):
         super().__init__(n_arms)
         self.total_counts = 0
         
+    def _get_ucb_value(self, arm: int) -> float:
+        """
+        Calculate the UCB value for a given arm.
+        
+        Args:
+            arm: Index of the arm
+            
+        Returns:
+            UCB value for the arm
+        """
+        if self.counts[arm] == 0:
+            return float('inf')
+        if self.total_counts == 0:
+            return self.values[arm]  # Return current value if no exploration term
+        return self.values[arm] + np.sqrt(2 * np.log(self.total_counts) / self.counts[arm])
+        
     def select_arm(self) -> int:
-        # Play each arm once initially
-        for arm in range(self.n_arms):
-            if self.counts[arm] == 0:
-                return arm
-                
-        # Calculate UCB values for each arm
-        ucb_values = [
-            self.values[arm] + np.sqrt(
-                2 * np.log(self.total_counts) / self.counts[arm]
-            )
-            for arm in range(self.n_arms)
-        ]
+        """Select the arm with highest UCB value."""
+        ucb_values = [self._get_ucb_value(arm) for arm in range(self.n_arms)]
         return int(np.argmax(ucb_values))
         
     def update(self, chosen_arm: int, reward: float) -> None:
+        """Update statistics for the chosen arm."""
         super().update(chosen_arm, reward)
         self.total_counts += 1
 
@@ -45,8 +52,29 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.nd
     history = np.zeros((n_times, n_arms))
     
     for idx, t in enumerate(times):
-        v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
-        v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
+        try:
+            # Get data for current timestep with error handling
+            v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
+            v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
+        except IndexError:
+            # If we're missing data for one protocol at this timestamp,
+            # use the worst possible values for the missing protocol
+            worst_case = pd.Series({
+                'Average Delay (s)': df['Average Delay (s)'].max(),
+                'Loss Rate (%)': 100.0,
+                'Average Load': df['Average Load'].max()
+            })
+            
+            # Check which protocol is missing
+            v2v_exists = len(df[(df['Time'] == t) & (df['Protocol'] == 'V2V')]) > 0
+            v2i_exists = len(df[(df['Time'] == t) & (df['Protocol'] == 'V2I')]) > 0
+            
+            if not v2v_exists:
+                v2v_data = worst_case
+                v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
+            else:
+                v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
+                v2i_data = worst_case
         
         # Safely get metric values with inf/nan handling
         def safe_get_metric(data, metric):
@@ -54,7 +82,7 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.nd
             if np.isinf(val) or np.isnan(val):
                 return 1.0  # Penalize inf/nan values
             return val
-        
+            
         # Get metrics with safety checks
         v2v_delay = safe_get_metric(v2v_data, 'Average Delay (s)')
         v2v_loss = safe_get_metric(v2v_data, 'Loss Rate (%)')
@@ -69,17 +97,17 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.nd
         max_loss = max(v2v_loss, v2i_loss)
         max_load = max(v2v_load, v2i_load)
         
-        # Prevent divide by zero
+        # All metrics weighted equally (1/3 each)
         v2v_score = (
-            0.5 * (v2v_delay / max_delay if max_delay > 0 else 0.0) +
-            0.3 * (v2v_loss / max_loss if max_loss > 0 else 0.0) +
-            0.2 * (v2v_load / max_load if max_load > 0 else 0.0)
+            (1/3) * (v2v_delay / max_delay if max_delay > 0 else 0.0) +
+            (1/3) * (v2v_loss / max_loss if max_loss > 0 else 0.0) +
+            (1/3) * (v2v_load / max_load if max_load > 0 else 0.0)
         )
         
         v2i_score = (
-            0.5 * (v2i_delay / max_delay if max_delay > 0 else 0.0) +
-            0.3 * (v2i_loss / max_loss if max_loss > 0 else 0.0) +
-            0.2 * (v2i_load / max_load if max_load > 0 else 0.0)
+            (1/3) * (v2i_delay / max_delay if max_delay > 0 else 0.0) +
+            (1/3) * (v2i_loss / max_loss if max_loss > 0 else 0.0) +
+            (1/3) * (v2i_load / max_load if max_load > 0 else 0.0)
         )
         
         # Convert to rewards (higher is better)

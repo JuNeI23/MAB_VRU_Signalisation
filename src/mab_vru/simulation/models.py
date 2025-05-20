@@ -18,12 +18,15 @@ class Message:
     priority: int
     creation_time: float
     delay: float = 0.0
+    size: float = 1.0  # Default message size
     
     def __post_init__(self):
         if self.priority < 0:
             raise ValueError("Priority must be non-negative")
         if self.delay < 0:
             raise ValueError("Delay must be non-negative")
+        if self.size <= 0:
+            raise ValueError("Message size must be positive")
 
 class Node(ABC):
     """Base class for network nodes."""

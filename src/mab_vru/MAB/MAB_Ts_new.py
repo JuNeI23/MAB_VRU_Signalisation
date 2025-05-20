@@ -51,8 +51,29 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.nd
     history = np.zeros((n_times, n_arms))
     
     for idx, t in enumerate(times):
-        v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
-        v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
+        try:
+            # Get data for current timestep with error handling
+            v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
+            v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
+        except IndexError:
+            # If we're missing data for one protocol at this timestamp,
+            # use the worst possible values for the missing protocol
+            worst_case = pd.Series({
+                'Average Delay (s)': df['Average Delay (s)'].max(),
+                'Loss Rate (%)': 100.0,
+                'Average Load': df['Average Load'].max()
+            })
+            
+            # Check which protocol is missing
+            v2v_exists = len(df[(df['Time'] == t) & (df['Protocol'] == 'V2V')]) > 0
+            v2i_exists = len(df[(df['Time'] == t) & (df['Protocol'] == 'V2I')]) > 0
+            
+            if not v2v_exists:
+                v2v_data = worst_case
+                v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
+            else:
+                v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
+                v2i_data = worst_case
         
         # Safely get metric values with inf/nan handling
         def safe_get_metric(data, metric):
