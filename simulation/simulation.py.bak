@@ -2,8 +2,12 @@
 Module for simulating V2V and V2I communications in a VRU signalization system.
 """
 import multiprocessing as mp
-from typing import List, Dict, Tuple, Optional
-import pandas as pd
+from typing import List, Dict, Tuple, Opt                for sender in v2v_users:
+                    if sender.user_id != receiver.user_id:
+                        sender.protocol = protocole
+                        receiver.protocol = protocole
+                        sender.send_message(receiver, size=1)
+                sender.process_messages(user_dict, metric)import pandas as pd
 import csv
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
 import numpy as np
@@ -211,69 +215,59 @@ def simulate_batch(args: Tuple[List[Node], Protocole, str]) -> Tuple[str, Tuple[
                 # Get all attributes with validation before creating new objects
                 attrs = {}
                 if isinstance(user, (User, Infrastructure)):
-                    # Use getattr with safe defaults
                     attrs['x'] = float(getattr(user, 'x', 0.0))
                     attrs['y'] = float(getattr(user, 'y', 0.0))
                     attrs['user_id'] = str(getattr(user, 'user_id', f"user_{id(user)}"))
                     attrs['time'] = float(getattr(user, 'time', 0.0))
 
-                    if isinstance(user, User):
-                        new_user = User(
-                            usager_id=attrs['user_id'],
-                            x=attrs['x'],
-                            y=attrs['y'],
-                            angle=float(getattr(user, 'angle', 0.0)),
-                            speed=float(getattr(user, 'speed', 0.0)),
-                            position=float(getattr(user, 'position', 0.0)),
-                            lane=str(getattr(user, 'lane', '')),
-                            time=attrs['time'],
-                            usager_type=str(getattr(user, 'usager_type', 'DEFAULT')),
-                            categorie=str(getattr(user, 'categorie', 'vru'))
-                        )
-                        new_user.protocol = protocol
-                    elif isinstance(user, Infrastructure):
-                        try:
-                            processing_capacity = int(getattr(user, 'processing_capacity', 100))
-                        except (ValueError, TypeError):
-                            processing_capacity = 100
-                            
-                        new_user = Infrastructure(
-                            id=attrs['user_id'],
-                            protocol=protocol,
-                            x=attrs['x'],
-                            y=attrs['y'],
-                            processing_capacity=processing_capacity,
-                            time=attrs['time']
-                        )
-                    users_copy.append(new_user)
-                    logger.debug(f"Successfully copied {type(user).__name__} with id {new_user.user_id}")
+                if isinstance(user, User):
+                    new_user = User(
+                        usager_id=attrs['user_id'],
+                        x=attrs['x'],
+                        y=attrs['y'],
+                        angle=float(getattr(user, 'angle', 0.0)),
+                        speed=float(getattr(user, 'speed', 0.0)),
+                        position=float(getattr(user, 'position', 0.0)),
+                        lane=str(getattr(user, 'lane', '')),
+                        time=attrs['time'],
+                        usager_type=str(getattr(user, 'usager_type', 'DEFAULT')),
+                        categorie=str(getattr(user, 'categorie', 'vru'))
+                    )
+                    new_user.protocol = protocol
+                elif isinstance(user, Infrastructure):
+                    new_user = Infrastructure(
+                        id=attrs['user_id'],
+                        protocol=protocol,
+                        x=attrs['x'],
+                        y=attrs['y'],
+                        processing_capacity=int(getattr(user, 'processing_capacity', 100)),
+                        time=attrs['time']
+                    )
+                else:
+                    logger.warning(f"Unknown user type: {type(user).__name__}")
+                    continue
+
+                users_copy.append(new_user)
+                logger.debug(f"Successfully copied {type(user).__name__} with id {new_user.user_id}")
 
             except (AttributeError, ValueError, TypeError) as e:
-                logger.warning(f"Error copying {type(user).__name__}: {str(e)}")
+                logger.error(f"Error copying {type(user).__name__}: {str(e)}")
                 continue
             except Exception as e:
-                logger.warning(f"Unexpected error copying {type(user).__name__}: {str(e)}")
+                logger.error(f"Unexpected error copying {type(user).__name__}: {str(e)}")
                 continue
 
         if not users_copy:
-            logger.warning("No users were successfully copied")
-            return protocol.name, (0.0, 1.0, 0.0)  # Return default metrics instead of None
+            logger.error("No users were successfully copied")
+            return protocol.name, (None, None, None)
 
         # Run simulation with copied objects
         metric = simuler_communication(users_copy, protocol, metric, mode)
-        result = metric.get_metrics()
+        return protocol.name, metric.get_metrics()
         
-        # Validate metrics
-        avg, loss, load = result
-        if avg is None or loss is None or load is None:
-            logger.warning("Invalid metrics returned from simulation")
-            return protocol.name, (0.0, 1.0, 0.0)  # Return default metrics
-            
-        return protocol.name, result
-
     except Exception as e:
         logger.error(f"Batch simulation error: {str(e)}")
-        return protocol.name, (0.0, 1.0, 0.0)  # Return default metrics
+        return protocol.name, (None, None, None)
 
 def main(config: Optional[SimulationConfig] = None) -> bool:
     """
