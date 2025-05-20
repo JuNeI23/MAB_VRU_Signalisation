@@ -4,8 +4,8 @@ Integration tests for VRU simulation.
 import pytest
 import pandas as pd
 from pathlib import Path
-from mab_vru.simulation.simulation import main, SimulationConfig
-import mab_vru.simulation.simulation as simulation
+from mab_vru.simulation.traci_simulation import main, SimulationConfig
+import mab_vru.simulation.traci_simulation as simulation
 
 def test_full_simulation_run(temp_output_dir, sample_trace_data):
     """Test a complete simulation run with sample data."""

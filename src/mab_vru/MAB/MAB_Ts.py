@@ -4,7 +4,7 @@ Thompson Sampling Multi-Armed Bandit implementation.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from typing import Tuple, List, Union, Optional
+from typing import Tuple, List, Optional
 from pathlib import Path
 import logging
 from .base_mab import BaseMAB
@@ -12,45 +12,40 @@ from .base_mab import BaseMAB
 logger = logging.getLogger(__name__)
 
 class ThompsonSamplingMAB(BaseMAB):
-    """Thompson Sampling MAB with Gaussian rewards."""
-    
+    """Thompson Sampling MAB implementation."""
     def __init__(self, n_arms: int):
         super().__init__(n_arms)
+        self.alpha = np.ones(n_arms)  # Success count + 1
+        self.beta = np.ones(n_arms)   # Failure count + 1
         self.means = np.zeros(n_arms)
         self.stds = np.ones(n_arms)
         
     def select_arm(self) -> int:
-        """Select an arm using Thompson Sampling."""
-        return int(np.argmax([
-            np.random.normal(self.means[i], self.stds[i])
-            for i in range(self.n_arms)
-        ]))
-        
-    def update(self, chosen_arm: int, reward: float) -> None:
-        """Update parameters of the chosen arm."""
-        super().update(chosen_arm, reward)
-        
-        n = self.counts[chosen_arm]
-        old_mean = self.means[chosen_arm]
-        old_std = self.stds[chosen_arm]
-        
-        # Bayesian update for Gaussian distribution
-        self.means[chosen_arm] = (
-            (n - 1) * old_mean + reward
-        ) / n
-        
-        if n > 1:
-            self.stds[chosen_arm] = np.sqrt(
-                ((n - 1) * (old_std ** 2) + 
-                 (reward - old_mean) * (reward - self.means[chosen_arm])) / n
+        samples = np.random.beta(self.alpha, self.beta)
+        return int(np.argmax(samples))
+    
+    def update(self, arm: int, reward: float) -> None:
+        """Update arm statistics with new reward."""
+        super().update(arm, reward)
+        # Treat reward as binary success/failure probability
+        success_prob = min(max(reward, 0), 1)  # Clip to [0,1]
+        self.alpha[arm] += success_prob
+        self.beta[arm] += (1 - success_prob)
+        # Update mean and standard deviation for arm
+        n = self.alpha[arm] + self.beta[arm] - 2  # Subtract 2 for initial alpha=beta=1
+        self.means[arm] = self.alpha[arm] / (self.alpha[arm] + self.beta[arm])
+        if n > 0:
+            self.stds[arm] = np.sqrt(
+                (self.alpha[arm] * self.beta[arm]) /
+                ((self.alpha[arm] + self.beta[arm])**2 * (self.alpha[arm] + self.beta[arm] + 1))
             )
 
-def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.ndarray]:
-    """Run Thompson Sampling evolution on simulation data."""
+def run_evolution(df: pd.DataFrame) -> Tuple[List[float], np.ndarray]:
+    """Run evolution on simulation data."""
     times = sorted(df['Time'].unique())
     n_times = len(times)
-    mab = ThompsonSamplingMAB(n_arms)
-    history = np.zeros((n_times, n_arms))
+    mab = ThompsonSamplingMAB(n_arms=2)
+    history = np.zeros((n_times, 2))
     
     for idx, t in enumerate(times):
         try:
@@ -98,7 +93,7 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.nd
         max_loss = max(v2v_loss, v2i_loss)
         max_load = max(v2v_load, v2i_load)
         
-        # All metrics weighted equally (1/3 each)
+        # Thompson sampling emphasizes exploration through distribution sampling
         v2v_score = (
             (1/3) * (v2v_delay / max_delay if max_delay > 0 else 0.0) +
             (1/3) * (v2v_loss / max_loss if max_loss > 0 else 0.0) +
@@ -122,93 +117,7 @@ def run_evolution(df: pd.DataFrame, n_arms: int = 2) -> Tuple[List[float], np.nd
         else:
             mab.update(1, v2i_reward)
             
-        history[idx] = mab.means
+        history[idx] = mab.means  # Track means instead of values for Thompson Sampling
         
     return times, history
 
-def plot_evolution(times, history, save_path=None):
-    """Plot the evolution of both arms over time."""
-    plt.figure(figsize=(10, 6))
-    plt.plot(times, history[:, 0], label='V2V', color='blue')
-    plt.plot(times, history[:, 1], label='V2I', color='red')
-    plt.xlabel('Time')
-    plt.ylabel('Mean Value')
-    plt.title('Thompson Sampling: Protocol Performance Evolution')
-    plt.legend()
-    plt.grid(True)
-    
-    if save_path:
-        plt.savefig(save_path)
-        plt.close()
-    else:
-        plt.show()
-
-def compare_protocols(df: pd.DataFrame, save_path: Optional[Path] = None) -> Tuple[str, float]:
-    """Compare V2V and V2I protocols using Thompson Sampling strategy."""
-    logger.info("Starting Thompson Sampling comparison")
-    
-    times, history = run_evolution(df)
-    
-    if save_path:
-        plot_evolution(times, history, save_path)
-    
-    mab = ThompsonSamplingMAB(n_arms=2)
-    
-    # Process data chronologically
-    for t in sorted(df['Time'].unique()):
-        v2v_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2V')].iloc[0]
-        v2i_data = df[(df['Time'] == t) & (df['Protocol'] == 'V2I')].iloc[0]
-        
-        def safe_get_metric(data, metric):
-            val = data[metric]
-            if np.isinf(val) or np.isnan(val):
-                return 1.0
-            return val
-            
-        # Get metrics with safety checks
-        v2v_delay = safe_get_metric(v2v_data, 'Average Delay (s)')
-        v2v_loss = safe_get_metric(v2v_data, 'Loss Rate (%)')
-        v2v_load = safe_get_metric(v2v_data, 'Average Load')
-        
-        v2i_delay = safe_get_metric(v2i_data, 'Average Delay (s)')
-        v2i_loss = safe_get_metric(v2i_data, 'Loss Rate (%)')
-        v2i_load = safe_get_metric(v2i_data, 'Average Load')
-        
-        # Thompson sampling emphasizes minimizing network load more
-        max_delay = max(v2v_delay, v2i_delay)
-        max_loss = max(v2v_loss, v2i_loss)
-        max_load = max(v2v_load, v2i_load)
-        
-        # All metrics weighted equally (1/3 each)
-        v2v_score = (
-            (1/3) * (v2v_delay / max_delay if max_delay > 0 else 0.0) +
-            (1/3) * (v2v_loss / max_loss if max_loss > 0 else 0.0) +
-            (1/3) * (v2v_load / max_load if max_load > 0 else 0.0)
-        )
-        
-        v2i_score = (
-            (1/3) * (v2i_delay / max_delay if max_delay > 0 else 0.0) +
-            (1/3) * (v2i_loss / max_loss if max_loss > 0 else 0.0) +
-            (1/3) * (v2i_load / max_load if max_load > 0 else 0.0)
-        )
-        
-        # Convert to rewards (higher is better)
-        v2v_reward = 1.0 - v2v_score
-        v2i_reward = 1.0 - v2i_score
-        
-        # Update MAB with both rewards
-        mab.update(0, v2v_reward)
-        mab.update(1, v2i_reward)
-    
-    # Determine best protocol based on final means
-    v2v_value = mab.means[0]
-    v2i_value = mab.means[1]
-    best_protocol = 'V2V' if v2v_value > v2i_value else 'V2I'
-    best_value = max(v2v_value, v2i_value)
-    
-    logger.info(f"Final values after {len(df['Time'].unique())} iterations:")
-    logger.info(f"V2V: {v2v_value:.3f} ± {mab.stds[0]:.3f}")
-    logger.info(f"V2I: {v2i_value:.3f} ± {mab.stds[1]:.3f}")
-    logger.info(f"Best protocol: {best_protocol}")
-    
-    return best_protocol, best_value

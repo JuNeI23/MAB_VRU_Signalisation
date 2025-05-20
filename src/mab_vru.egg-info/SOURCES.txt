@@ -1,10 +1,11 @@
 README.md
 pyproject.toml
-src/UNKNOWN.egg-info/PKG-INFO
-src/UNKNOWN.egg-info/SOURCES.txt
-src/UNKNOWN.egg-info/dependency_links.txt
-src/UNKNOWN.egg-info/top_level.txt
 src/mab_vru/main.py
+src/mab_vru.egg-info/PKG-INFO
+src/mab_vru.egg-info/SOURCES.txt
+src/mab_vru.egg-info/dependency_links.txt
+src/mab_vru.egg-info/requires.txt
+src/mab_vru.egg-info/top_level.txt
 src/mab_vru/MAB/MAB_Ts.py
 src/mab_vru/MAB/MAB_e.py
 src/mab_vru/MAB/MAB_u.py
@@ -16,4 +17,3 @@ src/mab_vru/simulation/metric.py
 src/mab_vru/simulation/models.py
 src/mab_vru/simulation/pickleable_queue.py
 src/mab_vru/simulation/protocols.py
-src/mab_vru/simulation/simulation.py

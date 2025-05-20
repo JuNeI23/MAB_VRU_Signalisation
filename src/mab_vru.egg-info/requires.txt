@@ -1,0 +1,9 @@
+numpy
+pandas
+matplotlib
+traci
+sumolib
+
+[dev]
+pytest
+pytest-cov
