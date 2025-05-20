@@ -1,110 +1,151 @@
-# MAB_VRU_Signalisation
+# MAB-VRU Signalization
 
-Une plateforme de simulation et d’analyse de protocoles de communication pour usagers vulnérables (VRU) et véhicules, utilisant des algorithmes Multi-Armed Bandit (MAB) pour choisir dynamiquement la meilleure métrique à optimiser.
+A Python-based simulation framework for optimizing V2V (Vehicle-to-Vehicle) and V2I (Vehicle-to-Infrastructure) communication protocols for Vulnerable Road Users (VRU) using Multi-Armed Bandit algorithms.
 
----
+## Overview
 
-## 📝 Description du projet
+This project implements an intelligent protocol selection system for vehicular communications, specifically focused on VRU safety. It uses Multi-Armed Bandit (MAB) algorithms to dynamically choose between V2V and V2I protocols based on performance metrics such as delay, range, and network load.
 
-Ce projet se divise en deux parties principales :
+### Key Features
 
-1. **Simulation des échanges V2V et V2I**  
-   - Modélisation de nœuds (usagers VRU, véhicules, infrastructures)  
-   - Transmission de messages suivant différents protocoles (paramétrables)  
-   - Collecte de métriques :  
-     - Délai de transmission  
-     - Taux de perte de paquets  
-     - Charge réseau
+- Dynamic protocol selection between V2V and V2I using MAB algorithms
+- Support for multiple MAB implementations:
+  - UCB (Upper Confidence Bound)
+  - ε-greedy
+  - Thompson Sampling
+- Integration with SUMO traffic simulator
+- Comprehensive metrics collection and analysis
+- Visualization of simulation results
 
-2. **Sélection dynamique via MAB**  
-   - Deux scripts d’analyse qui exploitent les données de simulation (`resultats.csv`) :  
-     - **MAB_u.py** : algorithme UCB1 (Upper Confidence Bound)  
-     - **MAB_e.py** : algorithme ε-greedy  
-   - Ces scripts comparent les performances finales des protocoles V2V et V2I et proposent un classement.
+## Requirements
 
----
+- Python ≥ 3.8
+- SUMO (Simulation of Urban MObility)
 
-## 📂 Structure du projet
-MAB_VRU_Signalisation/
-├── MAB_u.py               # Analyse UCB des métriques V2V/V2I
-├── MAB_e.py               # Analyse ε-greedy des métriques V2V/V2I
-├── resultats.csv          # Données brutes de la simulation
-└── simulation/
-    ├── simulation.py      # Point d’entrée de la simulation (main)
-    ├── models.py          # Classes Message, Node, User, Infrastructure
-    └── protocols.py       # Classes Protocole et Metric
+### Python Dependencies
 
----
-
-## 🔧 Prérequis
-
-- **Python 3.7+**  
-- Bibliothèques Python :
-  ```bash 
-   pip install numpy pandas matplotlib
-
-## 🚀 Installation & Exécution 
-1. Cloner le dépot
-   git clone https://votre-repo/MAB_VRU_Signalisation.git
-cd MAB_VRU_Signalisation
-
-
-2. Lancer la simulation
-   La simulation génère (ou met à jour) le fichier resultats.csv.
-   ```bash
-      python simulation/simulation.py
-
-4.	Analyser avec UCB
-   ```bash
-  	   python MAB_u.py
-   ``` 
-   •  Affiche la meilleure valeur UCB pour V2V et V2I
-	•	Conclusion automatique du protocole gagnant
-	•	(Décommentez la ligne plot_evolution() pour visualiser l’évolution)
-
-4.bis	Analyser avec ε-greedy
-```bash
-   python MAB_e.py
+Core dependencies:
 ```
-   •	Par défaut, ε = 0.1 (modifiable dans l’appel de la fonction)
-   •	Affiche la meilleure valeur estimée pour V2V et V2I
-   •	(Décommentez plot_evolution(epsilon=…) pour tracer les courbes)
+numpy>=1.20.0
+pandas>=1.3.0
+matplotlib>=3.4.0
+traci
+sumolib
+tqdm>=4.65.0
+```
 
-⸻
+Development dependencies:
+```
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-xdist>=3.0.0
+```
 
-🔍 Détails des composants
+## Installation
 
-1. simulation/models.py
-	•	Message : paquet priorisé, avec timestamp
-	•	Node (générique) : géolocalisation, portée, capacité de traitement
-	•	User : utilisateur VRU ou véhicule (hérite de Node)
-	•	Infrastructure : nœud fixe (hérite de Node)
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/MAB_VRU_Signalisation.git
+cd MAB_VRU_Signalisation
+```
 
-2. simulation/protocols.py
-	•	Protocole :
-	•	Paramètres : nom, temps de transmission, taux d’échec, charge réseau
-	•	transmit_message() simule délai + perte de paquets
-	•	Metric : collecte et calcule
-	•	Délai moyen (transmission + file d’attente)
-	•	Taux de perte
-	•	Charge réseau moyenne
+2. Create and activate a virtual environment (optional but recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # On Unix/macOS
+# or
+.\venv\Scripts\activate  # On Windows
+```
 
-3. MAB_u.py & MAB_e.py
-	•	Lecture et nettoyage de resultats.csv
-	•	run_evolution() : parcourt chaque instant, met à jour les MABs
-	•	compare_protocols() : compare les meilleures récompenses des deux protocoles
-	•	plot_evolution() : trace l’historique des valeurs estimées (optionnel)
+3. Install the package and dependencies:
+```bash
+pip install -e ".[dev]"
+```
 
-⸻
+## Usage
 
-⚙️ Personnalisation
-	•	Modifier ε (pour ε-greedy) : passez un autre epsilon à plot_evolution() ou compare_protocols().
-	•	Nombre de « bras » (métriques) : changez n_arms dans run_evolution() (par défaut 3 : délai, perte, charge).
-	•	Paramètres de protocole : dans simulation/protocols.py, ajustez transmission_time, transmission_success_rate, etc.
+### Running a Simulation
 
-⸻
+The main simulation can be run with default parameters:
 
-📝 Bonnes pratiques
-	•	Vérifiez régulièrement la cohérence de resultats.csv (format UTF-8, séparateur par défaut).
-	•	Isolez vos tests en modifiant les paramètres dans simulation/simulation.py.
-	•	Utilisez un environnement virtuel pour éviter les conflits de dépendances.
+```python
+from mab_vru.main import main, SimulationConfig
+
+# Use default configuration
+config = SimulationConfig()
+main(config)
+```
+
+Or with custom parameters:
+
+```python
+config = SimulationConfig(
+    v2v_network_load=0.1,
+    v2v_packet_loss=0.1,
+    v2v_transmission_time=0.1,
+    v2i_network_load=0.1,
+    v2i_packet_loss=0.05,
+    v2i_transmission_time=0.5,
+    mab_algorithms=['ucb', 'epsilon-greedy', 'thompson'],
+    epsilon_value=0.1
+)
+main(config)
+```
+
+### Directory Structure
+
+```
+MAB_VRU_Signalisation/
+├── src/
+│   └── mab_vru/
+│       ├── MAB/           # MAB algorithm implementations
+│       └── simulation/    # Simulation components
+├── tests/                 # Test suite
+├── results/              # Simulation results
+├── logs/                 # Simulation logs
+└── plots/                # Generated visualizations
+```
+
+## Testing
+
+Run the full test suite:
+
+```bash
+pytest
+```
+
+Run tests with coverage report:
+
+```bash
+pytest --cov=simulation --cov=MAB --cov-report=html
+```
+
+## Results Analysis
+
+Simulation results are saved in the `results/` directory in CSV format. Each run generates:
+- Main results file: `results/resultats_{algorithm}.csv`
+- Protocol-specific results: `results/resultats_{algorithm}_v2v.csv` and `results/resultats_{algorithm}_v2i.csv`
+
+Performance metrics include:
+- Average Delay (s)
+- Loss Rate (%)
+- Average Network Load
+- Average Distance
+- Reachability Rate (%)
+- MAB Selection Rate (%)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run the test suite
+5. Submit a pull request
+
+## License
+
+[Add your license information here]
+
+## Authors
+
+- Sorre Antonin
