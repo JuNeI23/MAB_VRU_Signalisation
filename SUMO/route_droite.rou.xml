@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2025-05-16 09:15:11 by Eclipse SUMO netedit Version 1.22.0
+<!-- generated on 2025-05-20 11:03:28 by Eclipse SUMO netedit Version 1.22.0
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
@@ -11,7 +11,7 @@
         <personTrip fromJunction="J0" toJunction="J4"/>
     </person>
     <container id="c_0" type="infra" depart="0.00">
-        <stop edge="-E0" endPos="22.29" duration="154.00"/>
+        <stop edge="E1" endPos="7.63" duration="154.00"/>
     </container>
     <trip id="t_1" depart="20.00" fromJunction="J4" toJunction="J0"/>
     <trip id="t_0" depart="80.00" fromJunction="J0" toJunction="J4"/>
