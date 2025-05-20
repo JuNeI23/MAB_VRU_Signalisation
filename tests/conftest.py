@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import os
-from simulation.simulation import SimulationConfig
+from mab_vru.main import SimulationConfig
 
 @pytest.fixture
 def sample_simulation_data():
