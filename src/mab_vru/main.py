@@ -11,13 +11,13 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
-from mab_vru.simulation.models import User, Infrastructure, Node
-from mab_vru.simulation.protocols import Protocol
-from mab_vru.simulation.metric import Metric
-from mab_vru.simulation.analytics import analyze_simulation_results
-from mab_vru.MAB.MAB_u import UCBMAB  # Import MAB algorithm
-from mab_vru.MAB.MAB_Ts import ThompsonSamplingMAB # Import MAB algorithm
-from mab_vru.MAB.MAB_e import EpsilonGreedyMAB  # Import MAB algorithm
+from simulation.models import User, Infrastructure, Node
+from simulation.protocols import Protocol
+from simulation.metric import Metric
+from simulation.analytics import analyze_simulation_results
+from MAB.MAB_u import UCBMAB  # Import MAB algorithm
+from MAB.MAB_Ts import ThompsonSamplingMAB # Import MAB algorithm
+from MAB.MAB_e import EpsilonGreedyMAB  # Import MAB algorithm
 
 def setup_logging():
     """Configure logging with both file and console handlers."""
