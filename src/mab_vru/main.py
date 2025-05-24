@@ -285,7 +285,7 @@ def find_best_peer_optimized(user: User, users: List[User]) -> Tuple[Optional[Us
 def process_v2i_communication(user: User, infra: Infrastructure, distance: float, 
                              mab_algorithm: MABAlgorithm) -> Tuple[Dict, bool]:
     """Process a V2I communication and return metrics and success."""
-    logger.debug(f"User {user.usager_id} attempting V2I communication with {infra.id} at distance {distance:.2f}")
+    logger.debug(f"User {user.user_id} attempting V2I communication with {infra.user_id} at distance {distance:.2f}")
     msg = user.create_message()
     success = infra.protocol.transmit_message(msg)
     
@@ -314,7 +314,7 @@ def process_v2i_communication(user: User, infra: Infrastructure, distance: float
 def process_v2v_communication(user: User, peer: User, distance: float, 
                              mab_algorithm: MABAlgorithm, selected_protocol: str) -> Tuple[Dict, bool]:
     """Process a V2V communication and return metrics and success."""
-    logger.debug(f"User {user.usager_id} attempting V2V communication with {peer.usager_id} at distance {distance:.2f}")
+    logger.debug(f"User {user.user_id} attempting V2V communication with {peer.user_id} at distance {distance:.2f}")
     msg = user.create_message()
     success = user.protocol.transmit_message(msg)
     
@@ -361,13 +361,13 @@ def run_timestep(users: List[User], infras: List[Infrastructure], time: float,
     total_communications = 0
     
     for user in active_users:
-        logger.debug(f"Processing user {user.usager_id} (type: {user.usager_type})")
+        logger.debug(f"Processing user {user.user_id} (type: {user.usager_type})")
         total_communications += 1
         
         # Use MAB to select protocol (0 = V2V, 1 = V2I)
         selected_arm = mab_algorithm.select_arm()
         selected_protocol = 'V2I' if selected_arm == V2I_ARM_INDEX else 'V2V'
-        logger.debug(f"MAB selected protocol: {selected_protocol} for user {user.usager_id}")
+        logger.debug(f"MAB selected protocol: {selected_protocol} for user {user.user_id}")
         
         if selected_protocol == 'V2I' and infras:
             # Try V2I communication
@@ -387,7 +387,7 @@ def run_timestep(users: List[User], infras: List[Infrastructure], time: float,
                     v2i_successes += 1
                 continue
             else:
-                logger.debug(f"No infrastructure in range for user {user.usager_id}, falling back to V2V")
+                logger.debug(f"No infrastructure in range for user {user.user_id}, falling back to V2V")
         
         # V2V communication (either selected by MAB or fallback)
         best_peer, min_distance = find_best_peer_optimized(user, users)
@@ -405,7 +405,7 @@ def run_timestep(users: List[User], infras: List[Infrastructure], time: float,
             if success:
                 v2v_successes += 1
         else:
-            logger.debug(f"No peers in range for user {user.usager_id}")
+            logger.debug(f"No peers in range for user {user.user_id}")
     
     # Prepare results with range information
     results = {}
