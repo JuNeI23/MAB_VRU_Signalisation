@@ -3,21 +3,33 @@ Module for simulating V2V and V2I communications in a VRU signalization system.
 Simplified version that maintains core functionality.
 """
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Tuple, TypeVar
 import pandas as pd
 import numpy as np
 import logging
 from pathlib import Path
 from datetime import datetime
 import sys
+import math
 
 from simulation.models import User, Infrastructure, Node
 from simulation.protocols import Protocol
 from simulation.metric import Metric
 from simulation.analytics import analyze_simulation_results
+from simulation.spatial_index import SpatialIndex
 from MAB.MAB_u import UCBMAB  # Import MAB algorithm
 from MAB.MAB_Ts import ThompsonSamplingMAB # Import MAB algorithm
 from MAB.MAB_e import EpsilonGreedyMAB  # Import MAB algorithm
+
+# Protocol arm indices
+V2V_ARM_INDEX = 0
+V2I_ARM_INDEX = 1
+
+# Default values for infrastructure
+DEFAULT_INFRA_PROCESSING_CAPACITY = 100.0
+
+# Type alias for MAB algorithms
+MABAlgorithm = Union[UCBMAB, EpsilonGreedyMAB, ThompsonSamplingMAB]
 
 def setup_logging():
     """Configure logging with both file and console handlers."""
@@ -83,12 +95,38 @@ class SimulationConfig:
     trace_file: str = 'sumoTraceCroisement.csv'
 
     def __post_init__(self):
-        """Initialize default values after dataclass initialization."""
+        """Initialize default values after dataclass initialization and validate parameters."""
         if self.infra_positions is None:
             self.infra_positions = [(0.0, 0.0)]  # Default single infrastructure
         if self.mab_algorithms is None:
             # Use all available MAB algorithms by default
             self.mab_algorithms = ['ucb', 'epsilon-greedy', 'thompson']
+        
+        # Validate network parameters
+        if not 0 <= self.v2v_packet_loss <= 1:
+            raise ValueError("v2v_packet_loss must be between 0 and 1")
+        if not 0 <= self.v2i_packet_loss <= 1:
+            raise ValueError("v2i_packet_loss must be between 0 and 1")
+        if not 0 <= self.v2v_network_load <= 1:
+            raise ValueError("v2v_network_load must be between 0 and 1")
+        if not 0 <= self.v2i_network_load <= 1:
+            raise ValueError("v2i_network_load must be between 0 and 1")
+        if self.v2v_transmission_time < 0:
+            raise ValueError("v2v_transmission_time must be positive")
+        if self.v2i_transmission_time < 0:
+            raise ValueError("v2i_transmission_time must be positive")
+        if self.infra_processing_capacity <= 0:
+            raise ValueError("infra_processing_capacity must be positive")
+        
+        # Validate MAB parameters
+        if not 0 <= self.epsilon_value <= 1:
+            raise ValueError("epsilon_value must be between 0 and 1")
+        
+        # Validate algorithm names
+        valid_algorithms = ['ucb', 'epsilon-greedy', 'thompson']
+        for algo in self.mab_algorithms:
+            if algo not in valid_algorithms:
+                raise ValueError(f"Unknown MAB algorithm: {algo}. Valid options: {valid_algorithms}")
 
 def load_users(trace_file: str, v2v_protocol: Protocol) -> List[User]:
     """Load users (vehicles and pedestrians) from SUMO trace file."""
@@ -173,7 +211,7 @@ def load_infrastructure(trace_file: str, v2i_protocol: Protocol) -> List[Infrast
                         protocol=v2i_protocol,
                         x=float(row['infra/_x']),
                         y=float(row['infra/_y']),
-                        processing_capacity=100,  # Default value
+                        processing_capacity=DEFAULT_INFRA_PROCESSING_CAPACITY,
                         time=float(row['_time'])
                     ))
                 except (ValueError, KeyError) as e:
@@ -188,7 +226,7 @@ def load_infrastructure(trace_file: str, v2i_protocol: Protocol) -> List[Infrast
                         protocol=v2i_protocol,
                         x=float(row['container/_x']),
                         y=float(row['container/_y']),
-                        processing_capacity=100,  # Default value
+                        processing_capacity=DEFAULT_INFRA_PROCESSING_CAPACITY,
                         time=float(row['_time'])
                     ))
                 except (ValueError, KeyError) as e:
@@ -218,7 +256,93 @@ def load_infrastructure(trace_file: str, v2i_protocol: Protocol) -> List[Infrast
         logger.error(f"Error loading infrastructure: {e}")
         return []
 
-def run_timestep(users: List[User], infras: List[Infrastructure], time: float, mab_algorithm: Any) -> Dict:
+def find_best_infrastructure(user: User, infras: List[Infrastructure]) -> Tuple[Optional[Infrastructure], float]:
+    """Find the closest infrastructure to a user."""
+    best_infra = None
+    min_distance = float('inf')
+    
+    for infra in infras:
+        distance = user.distance_to(infra)
+        if distance < min_distance:
+            min_distance = distance
+            best_infra = infra
+    
+    return best_infra, min_distance
+
+def find_best_peer_optimized(user: User, users: List[User]) -> Tuple[Optional[User], float]:
+    """Find the closest peer to a user using a spatial index for better performance."""
+    spatial_index = SpatialIndex()
+    
+    # Add all users to the spatial index
+    for other_user in users:
+        if other_user != user:  # Don't add the current user
+            spatial_index.add_node(other_user, other_user.x, other_user.y)
+    
+    # Find the nearest neighbor
+    nearest, distance = spatial_index.nearest_neighbor(user.x, user.y)
+    return nearest, distance
+
+def process_v2i_communication(user: User, infra: Infrastructure, distance: float, 
+                             mab_algorithm: MABAlgorithm) -> Tuple[Dict, bool]:
+    """Process a V2I communication and return metrics and success."""
+    logger.debug(f"User {user.usager_id} attempting V2I communication with {infra.id} at distance {distance:.2f}")
+    msg = user.create_message()
+    success = infra.protocol.transmit_message(msg)
+    
+    # Calculate reward
+    reward = infra.protocol.calculate_reward(
+        success=success,
+        distance=distance,
+        range_=infra.range,
+        delay=msg.delay
+    )
+    
+    # Update MAB with reward for V2I
+    mab_algorithm.update(V2I_ARM_INDEX, reward)
+    logger.debug(f"V2I communication {'successful' if success else 'failed'}, reward: {reward:.3f}")
+    
+    # Return metrics
+    metrics = {
+        'message': msg,
+        'success': success,
+        'distance': distance,
+        'range': infra.range
+    }
+    
+    return metrics, success
+
+def process_v2v_communication(user: User, peer: User, distance: float, 
+                             mab_algorithm: MABAlgorithm, selected_protocol: str) -> Tuple[Dict, bool]:
+    """Process a V2V communication and return metrics and success."""
+    logger.debug(f"User {user.usager_id} attempting V2V communication with {peer.usager_id} at distance {distance:.2f}")
+    msg = user.create_message()
+    success = user.protocol.transmit_message(msg)
+    
+    # Calculate reward
+    reward = user.protocol.calculate_reward(
+        success=success,
+        distance=distance,
+        range_=user.range,
+        delay=msg.delay
+    )
+    
+    # Update MAB with reward for V2V
+    if selected_protocol == 'V2V':
+        mab_algorithm.update(V2V_ARM_INDEX, reward)
+        logger.debug(f"V2V communication {'successful' if success else 'failed'}, reward: {reward:.3f}")
+    
+    # Return metrics
+    metrics = {
+        'message': msg,
+        'success': success,
+        'distance': distance,
+        'range': user.range
+    }
+    
+    return metrics, success
+
+def run_timestep(users: List[User], infras: List[Infrastructure], time: float, 
+                mab_algorithm: MABAlgorithm) -> Dict[str, Dict[str, float]]:
     """Run simulation for one timestep with MAB-based protocol selection."""
     logger.debug(f"Starting timestep simulation at t={time}")
     
@@ -231,90 +355,64 @@ def run_timestep(users: List[User], infras: List[Infrastructure], time: float, m
     active_users = [user for user in users if user.time == time]
     logger.debug(f"Found {len(active_users)} active users at t={time}")
     
+    # Track successful communications
+    v2v_successes = 0
+    v2i_successes = 0
+    total_communications = 0
+    
     for user in active_users:
-        logger.debug(f"Processing user {user.user_id} (type: {user.usager_type})")
+        logger.debug(f"Processing user {user.usager_id} (type: {user.usager_type})")
+        total_communications += 1
         
         # Use MAB to select protocol (0 = V2V, 1 = V2I)
         selected_arm = mab_algorithm.select_arm()
-        selected_protocol = 'V2I' if selected_arm == 1 else 'V2V'
-        logger.debug(f"MAB selected protocol: {selected_protocol} for user {user.user_id}")
+        selected_protocol = 'V2I' if selected_arm == V2I_ARM_INDEX else 'V2V'
+        logger.debug(f"MAB selected protocol: {selected_protocol} for user {user.usager_id}")
         
         if selected_protocol == 'V2I' and infras:
             # Try V2I communication
-            best_infra = None
-            min_distance = float('inf')
-            
-            # Find closest infrastructure
-            for infra in infras:
-                distance = user.distance_to(infra)
-                if distance < min_distance:
-                    min_distance = distance
-                    best_infra = infra
+            best_infra, min_distance = find_best_infrastructure(user, infras)
             
             if best_infra and user.in_range(best_infra):
-                logger.debug(f"User {user.user_id} attempting V2I communication with {best_infra.user_id} at distance {min_distance:.2f}")
-                msg = user.create_message()
-                success = best_infra.protocol.transmit_message(msg)
-                
-                # Calculate reward using the new reward function
-                reward = best_infra.protocol.calculate_reward(
-                    success=success,
-                    distance=min_distance,
-                    range_=best_infra.range,
-                    delay=msg.delay
+                v2i_metrics, success = process_v2i_communication(
+                    user, best_infra, min_distance, mab_algorithm
                 )
-                
-                # Update MAB with reward (1 for V2I)
-                mab_algorithm.update(1, reward)
-                logger.debug(f"V2I communication {'successful' if success else 'failed'}, reward: {reward:.3f}")
-                
-                # Update metrics
-                metrics['V2I'].update(msg, success, min_distance, best_infra.range)
+                metrics['V2I'].update(
+                    v2i_metrics['message'], 
+                    v2i_metrics['success'], 
+                    v2i_metrics['distance'], 
+                    v2i_metrics['range']
+                )
+                if success:
+                    v2i_successes += 1
                 continue
             else:
-                logger.debug(f"No infrastructure in range for user {user.user_id}, falling back to V2V")
+                logger.debug(f"No infrastructure in range for user {user.usager_id}, falling back to V2V")
         
         # V2V communication (either selected by MAB or fallback)
-        best_peer = None
-        min_distance = float('inf')
-        
-        # Find closest peer
-        for other in users:
-            if user != other:
-                distance = user.distance_to(other)
-                if distance < min_distance:
-                    min_distance = distance
-                    best_peer = other
+        best_peer, min_distance = find_best_peer_optimized(user, users)
         
         if best_peer and user.in_range(best_peer):
-            logger.debug(f"User {user.user_id} attempting V2V communication with {best_peer.user_id} at distance {min_distance:.2f}")
-            msg = user.create_message()
-            success = user.protocol.transmit_message(msg)
-            
-            # Calculate reward
-            reward = user.protocol.calculate_reward(
-                success=success,
-                distance=min_distance,
-                range_=user.range,
-                delay=msg.delay
+            v2v_metrics, success = process_v2v_communication(
+                user, best_peer, min_distance, mab_algorithm, selected_protocol
             )
-            
-            # Update MAB with reward (0 for V2V)
-            if selected_protocol == 'V2V':
-                mab_algorithm.update(0, reward)
-                logger.debug(f"V2V communication {'successful' if success else 'failed'}, reward: {reward:.3f}")
-            
-            # Update metrics
-            metrics['V2V'].update(msg, success, min_distance, user.range)
+            metrics['V2V'].update(
+                v2v_metrics['message'], 
+                v2v_metrics['success'], 
+                v2v_metrics['distance'], 
+                v2v_metrics['range']
+            )
+            if success:
+                v2v_successes += 1
         else:
-            logger.debug(f"No peers in range for user {user.user_id}")
+            logger.debug(f"No peers in range for user {user.usager_id}")
     
     # Prepare results with range information
     results = {}
     for protocol, metric in metrics.items():
         if metric.message_count > 0:
             # Map protocol name to arm index (V2V = 0, V2I = 1)
-            arm_index = 1 if protocol == 'V2I' else 0
+            arm_index = V2I_ARM_INDEX if protocol == 'V2I' else V2V_ARM_INDEX
             selection_rate = mab_algorithm.get_selection_rate(arm_index)
             
             results[protocol] = {
@@ -325,7 +423,9 @@ def run_timestep(users: List[User], infras: List[Infrastructure], time: float, m
                 'Average Load': metric.average_load,
                 'Average Distance': metric.average_distance,
                 'Reachability Rate (%)': metric.reachability_rate * 100,
-                'MAB Selection Rate (%)': selection_rate * 100
+                'MAB Selection Rate (%)': selection_rate * 100,
+                'Success Count': v2v_successes if protocol == 'V2V' else v2i_successes,
+                'Total Communications': total_communications
             }
     
     return results
