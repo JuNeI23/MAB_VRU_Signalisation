@@ -11,17 +11,23 @@ authors = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "numpy",
-    "pandas",
-    "matplotlib",
-    "traci",
-    "sumolib"
+    "numpy>=1.20.0,<2.0.0",
+    "pandas>=1.3.0,<3.0.0",
+    "matplotlib>=3.4.0,<4.0.0",
+    "traci>=1.19.0",
+    "sumolib>=1.19.0",
+    "tqdm>=4.65.0,<5.0.0",
+    "psutil>=5.8.0,<6.0.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "pytest-cov"
+    "pytest>=7.0.0,<8.0.0",
+    "pytest-cov>=4.0.0,<5.0.0",
+    "pytest-xdist>=3.0.0,<4.0.0",
+    "black>=22.0.0,<24.0.0",
+    "flake8>=6.0.0,<7.0.0",
+    "mypy>=1.0.0,<2.0.0"
 ]
 
 [tool.setuptools.packages.find]

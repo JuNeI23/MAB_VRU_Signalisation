@@ -10,7 +10,7 @@ from mab_vru.simulation.models import User, Infrastructure, Node
 from mab_vru.simulation.protocols import Protocol
 from mab_vru.simulation.metric import Metric
 from mab_vru.MAB.MAB_u import UCBMAB
-from mab_vru.main import (
+from main import (
     SimulationConfig,
     run_timestep,
     load_users,

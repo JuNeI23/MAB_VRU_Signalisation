@@ -15,20 +15,28 @@ class UCBMAB(BaseMAB):
     """Upper Confidence Bound MAB implementation."""
     def __init__(self, n_arms: int):
         super().__init__(n_arms)
-        self.total_pulls = 0
-        self.pulls = np.zeros(n_arms)  # Track number of pulls per arm
+        # Remove redundant pulls tracking - use inherited counts
         
     def select_arm(self) -> int:
-        if 0 in self.pulls:
+        # Check if any arm hasn't been pulled yet
+        if 0 in self.counts:
             # Select first arm that hasn't been pulled yet
-            arm = int(np.where(self.pulls == 0)[0][0])
-            self.pulls[arm] += 1
-            self.total_pulls += 1
+            arm = self.counts.index(0)
             return arm
         
-        self.total_pulls += 1
-        exploration = np.sqrt(2 * np.log(self.total_pulls) / self.pulls)
-        ucb = self.values + exploration
-        selected_arm = int(np.argmax(ucb))
-        self.pulls[selected_arm] += 1
+        # Calculate UCB values for all arms
+        total_pulls = sum(self.counts)
+        exploration = np.sqrt(2 * np.log(total_pulls) / np.array(self.counts))
+        ucb_values = np.array(self.values) + exploration
+        
+        selected_arm = int(np.argmax(ucb_values))
         return selected_arm
+    
+    def _get_ucb_value(self, arm: int) -> float:
+        """Calculate UCB value for a specific arm."""
+        if self.counts[arm] == 0:
+            return float('inf')  # Unplayed arms have infinite priority
+        
+        total_pulls = sum(self.counts)
+        exploration = np.sqrt(2 * np.log(total_pulls) / self.counts[arm])
+        return self.values[arm] + exploration

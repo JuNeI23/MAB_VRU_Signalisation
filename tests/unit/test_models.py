@@ -3,7 +3,7 @@ Unit tests for VRU simulation models.
 """
 import pytest
 from mab_vru.simulation.models import Node, User, Infrastructure, Message
-from simulation.protocols import Protocole
+from mab_vru.simulation.protocols import Protocol
 
 def test_user_initialization():
     """Test User class initialization with valid parameters."""
@@ -33,7 +33,7 @@ def test_user_initialization():
 
 def test_infrastructure_initialization():
     """Test Infrastructure class initialization."""
-    protocol = Protocole("V2I", network_load=0.1, packet_loss_rate=0.05, transmission_time=0.5)
+    protocol = Protocol("V2I", network_load=0.1, packet_loss_rate=0.05, transmission_time=0.5)
     infra = Infrastructure(
         id="infra_1",
         protocol=protocol,
@@ -58,6 +58,7 @@ def test_message_initialization():
         priority=1,
         sender_id="sender_1",
         receiver_id="receiver_1",
+        creation_time=0.0,
         size=100.0
     )
     
@@ -70,10 +71,10 @@ def test_message_initialization():
 def test_invalid_message():
     """Test Message validation for invalid parameters."""
     with pytest.raises(ValueError):
-        Message(priority=1, sender_id="", receiver_id="receiver_1", size=100.0)
+        Message(priority=1, sender_id="", receiver_id="receiver_1", creation_time=0.0, size=100.0)
         
     with pytest.raises(ValueError):
-        Message(priority=1, sender_id="sender_1", receiver_id="receiver_1", size=0)
+        Message(priority=1, sender_id="sender_1", receiver_id="receiver_1", creation_time=0.0, size=0)
 
 def test_node_distance_calculation():
     """Test distance calculation between nodes."""
