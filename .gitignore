@@ -1,2 +1,83 @@
+# Results and logs
 resultats.csv
 /logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+results/
+plots/
+temp/
+*.csv
+!sumoTraceCroisement.csv
+!sumoTrace_edge.csv
+!tests/fixtures/*.csv
+
+# Old report files (now merged into README.md)
+PROJECT_COMPLETION_REPORT.md
+ACADEMIC_DELIVERY_SUMMARY.md
+DELIVERY_CHECKLIST.md
+IMPLEMENTATION_SUCCESS_REPORT.md
+PATCHES_IMPLEMENTATION_REPORT.md
+/tests
+/tests
+/tests/fixtures
+/tests

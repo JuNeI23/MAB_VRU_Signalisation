@@ -19,6 +19,7 @@ class Message:
     creation_time: float
     delay: float = 0.0
     size: float = 1.0  # Default message size
+    timestamp: float = 0.0  # Default timestamp
     
     def __post_init__(self):
         if self.priority < 0:
@@ -27,6 +28,11 @@ class Message:
             raise ValueError("Delay must be non-negative")
         if self.size <= 0:
             raise ValueError("Message size must be positive")
+        if not self.sender_id:
+            raise ValueError("Sender ID cannot be empty")
+        if self.timestamp == 0.0:
+            import time
+            self.timestamp = time.time()
 
 class Node(ABC):
     """Base class for network nodes."""
@@ -49,6 +55,10 @@ class Node(ABC):
     def distance_to(self, other: 'Node') -> float:
         """Calculate Euclidean distance to another node."""
         return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+    
+    def within_range(self, other: 'Node') -> bool:
+        """Check if another node is within communication range (alias for in_range)."""
+        return self.in_range(other)
     
     def in_range(self, other: 'Node') -> bool:
         """Check if another node is within communication range."""
@@ -79,7 +89,8 @@ class User(Node):
         categorie: str = "vehicule",
         protocol: Optional['Protocol'] = None
     ):
-        super().__init__(x=x, y=y, user_id=usager_id)
+        # Set range to 90.0 for VRU communication
+        super().__init__(x=x, y=y, user_id=usager_id, range_=90.0)
         self.angle = float(angle)
         self.speed = float(speed)
         self.position = float(position)
@@ -88,6 +99,7 @@ class User(Node):
         self.usager_type = str(usager_type)
         self.categorie = str(categorie)
         self.protocol = protocol
+        self.user_type = "User"
 
 class Infrastructure(Node):
     """Fixed infrastructure node."""
@@ -108,3 +120,5 @@ class Infrastructure(Node):
         )
         self.protocol = protocol
         self.time = float(time)
+        self.user_type = "Infrastructure"
+        self.categorie = "infrastructure"
